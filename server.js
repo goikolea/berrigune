@@ -9,76 +9,61 @@ const db = require('./server/database/db');
 app.use(express.static('public'));
 app.use(bodyParser.json());
 
-// --- CONFIGURACIÓN DE SEGURIDAD ---
-const JWT_SECRET = "CLAVE_SECRETA_CENTRO_FP_2025"; // Cambiar en producción
-const DOMINIO_PERMITIDO = "atxuri.net"; // CAMBIA ESTO por el dominio de tu centro (ej: fpcentro.es)
-const CODIGO_ACCESO = "1234"; // La contraseña maestra que darás a los profesores
+const JWT_SECRET = "CLAVE_SECRETA_CENTRO_FP_2025"; 
+const DOMINIO_PERMITIDO = "atxuri.net"; 
+const CODIGO_ACCESO = "1234"; 
 
-// Middleware: Barrera de seguridad
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Formato: "Bearer TOKEN"
-
-    if (!token) return res.sendStatus(401); // ¿Quién eres?
+    const token = authHeader && authHeader.split(' ')[1]; 
+    if (!token) return res.sendStatus(401); 
 
     jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.sendStatus(403); // Tu carnet es falso o caducó
+        if (err) return res.sendStatus(403); 
         req.user = user;
-        next(); // Pasa, amigo
+        next(); 
     });
 };
 
-
-// --- API PÚBLICA (Login) ---
+// --- API PÚBLICA ---
 
 app.post('/api/login', (req, res) => {
     const { email, code } = req.body;
-
     if (!email || !code) return res.status(400).json({ error: 'Faltan datos' });
     
-    // 1. Validar Dominio
     const domain = email.split('@')[1];
     if (domain !== DOMINIO_PERMITIDO) {
         return res.status(403).json({ error: `Acceso restringido a cuentas @${DOMINIO_PERMITIDO}` });
     }
 
-    // 2. Validar Código Maestro
     if (code !== CODIGO_ACCESO) {
-        return res.status(403).json({ error: 'Código de acceso incorrecto' });
+        return res.status(403).json({ error: 'Código incorrecto' });
     }
 
-    // 3. Buscar o Crear Usuario
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    
     if (!user) {
         const id = uuidv4();
-        const name = email.split('@')[0]; // Usamos la parte antes del @ como nombre inicial
+        const name = email.split('@')[0]; 
         db.prepare('INSERT INTO users (id, email, name) VALUES (?, ?, ?)').run(id, email, name);
         user = { id, email, name };
     }
 
-    // 4. Emitir Token
     const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
-
     res.json({ user, token });
 });
 
+// --- API PRIVADA ---
 
-// --- API PRIVADA (Requiere Token) ---
-
-// 1. Obtener Tipos (Formas)
 app.get('/api/signal-types', authenticateToken, (req, res) => {
     const types = db.prepare('SELECT * FROM signal_types').all();
     res.json(types);
 });
 
-// 2. Obtener Categorías (Colores)
 app.get('/api/categories', authenticateToken, (req, res) => {
     const categories = db.prepare('SELECT * FROM categories').all();
     res.json(categories);
 });
 
-// 3. Obtener Nodos (Hacemos doble JOIN para sacar forma y color)
 app.get('/api/nodes', authenticateToken, (req, res) => {
     const nodes = db.prepare(`
         SELECT nodes.*, 
@@ -91,9 +76,7 @@ app.get('/api/nodes', authenticateToken, (req, res) => {
     res.json(nodes);
 });
 
-// 4. Crear Nodo
 app.post('/api/nodes', authenticateToken, (req, res) => {
-    // Recibimos signal_type_id (QUÉ ES) Y category_id (DE QUÉ ÁREA ES)
     const { signal_type_id, category_id, x, y, title, description, link, is_new_category, new_category_data } = req.body;
     const user_id = req.user.id;
     
@@ -102,7 +85,6 @@ app.post('/api/nodes', authenticateToken, (req, res) => {
     let finalCategoryId = category_id;
 
     try {
-        // Lógica de Nueva Categoría (Solo crea Color y Nombre, la forma ya no va aquí)
         if (is_new_category && new_category_data) {
             const { name, color } = new_category_data;
             const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w\-]+/g, '');
@@ -120,7 +102,6 @@ app.post('/api/nodes', authenticateToken, (req, res) => {
         
         insertNode.run(id, user_id, signal_type_id, finalCategoryId, x, y, title, description || '', link || '');
         
-        // Devolvemos nodo completo haciendo los joins para tener los datos visuales
         const newNode = db.prepare(`
             SELECT nodes.*, 
                    categories.color as cat_color, categories.name as cat_name,
@@ -132,10 +113,105 @@ app.post('/api/nodes', authenticateToken, (req, res) => {
         `).get(id);
 
         res.json(newNode);
-
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Error al guardar' });
+    }
+});
+
+// CONEXIONES
+
+app.post('/api/connections', authenticateToken, (req, res) => {
+    const { source_node_id, target_node_id, description } = req.body;
+    const user_id = req.user.id;
+
+    if (!source_node_id || !target_node_id) return res.status(400).json({ error: 'Faltan nodos' });
+
+    const id = uuidv4();
+    try {
+        const stmt = db.prepare(`
+            INSERT INTO connections (id, user_id, source_node_id, target_node_id, description)
+            VALUES (?, ?, ?, ?, ?)
+        `);
+        stmt.run(id, user_id, source_node_id, target_node_id, description || '');
+        
+        // --- CAMBIO: Devolver el objeto completo, especialmente el user_id ---
+        const newConn = {
+            id, 
+            user_id, 
+            source_node_id, 
+            target_node_id, 
+            description,
+            created_at: new Date().toISOString()
+        };
+        
+        res.json(newConn);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Error guardando conexión' });
+    }
+});
+
+app.get('/api/connections', authenticateToken, (req, res) => {
+    // Hacemos JOIN para traer nombres de los nodos (opcional, pero útil para debug)
+    const conns = db.prepare('SELECT * FROM connections').all();
+    res.json(conns);
+});
+
+// NUEVO: Borrar conexión
+app.delete('/api/connections/:id', authenticateToken, (req, res) => {
+    const connId = req.params.id;
+    const userId = req.user.id;
+
+    const conn = db.prepare('SELECT user_id FROM connections WHERE id = ?').get(connId);
+    if (!conn) return res.status(404).json({ error: 'Conexión no encontrada' });
+    
+    // Solo el dueño puede borrar
+    if (conn.user_id !== userId) return res.status(403).json({ error: 'No tienes permiso' });
+
+    db.prepare('DELETE FROM connections WHERE id = ?').run(connId);
+    res.json({ success: true });
+});
+
+app.put('/api/nodes/:id/position', authenticateToken, (req, res) => {
+    const { x, y } = req.body;
+    const nodeId = req.params.id;
+    const userId = req.user.id;
+
+    const node = db.prepare('SELECT user_id FROM nodes WHERE id = ?').get(nodeId);
+    if (!node) return res.status(404).json({ error: 'Nodo no encontrado' });
+    if (node.user_id !== userId) return res.status(403).json({ error: 'No tienes permiso' });
+
+    db.prepare('UPDATE nodes SET x = ?, y = ? WHERE id = ?').run(x, y, nodeId);
+    res.json({ success: true });
+});
+
+// Obtener estadísticas del usuario para Badges
+app.get('/api/user-stats', authenticateToken, (req, res) => {
+    const userId = req.user.id;
+    const email = req.user.email; // El email viene en el token decodificado
+
+    try {
+        const createdCount = db.prepare('SELECT count(*) as c FROM nodes WHERE user_id = ?').get(userId).c;
+        const connCount = db.prepare('SELECT count(*) as c FROM connections WHERE user_id = ?').get(userId).c;
+
+        res.json({
+            email: email,
+            nodes_created: createdCount,
+            connections_created: connCount
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Obtener Anuncio Global
+app.get('/api/announcement', authenticateToken, (req, res) => {
+    try {
+        const announcement = db.prepare('SELECT message FROM announcements WHERE id = 1').get();
+        res.json({ message: announcement ? announcement.message : "" });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 

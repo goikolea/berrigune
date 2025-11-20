@@ -54,6 +54,27 @@ const initDB = () => {
             FOREIGN KEY(category_id) REFERENCES categories(id)
         )
     `);
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS connections (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            source_node_id TEXT,
+            target_node_id TEXT,
+            description TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id),
+            FOREIGN KEY(source_node_id) REFERENCES nodes(id),
+            FOREIGN KEY(target_node_id) REFERENCES nodes(id)
+        )
+    `);
+    // 8. Anuncios Globales (Reto)
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS announcements (
+            id INTEGER PRIMARY KEY CHECK (id = 1), -- Solo una fila permitida
+            message TEXT,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
 
     // --- SEMILLAS (Datos Iniciales) ---
 
@@ -78,6 +99,11 @@ const initDB = () => {
         insertCat.run('Learning factory', '#9013FE', 'informatica');   // Violeta
         insertCat.run('Jasangarritasuna', '#F5A623', 'electronica');       // Naranja
         insertCat.run('Ekintzailetza', '#50E3C2', 'sostenibilidad'); // Verde Agua
+    }
+    const stmtAnnounce = db.prepare('SELECT count(*) as count FROM announcements');
+    if (stmtAnnounce.get().count === 0) {
+        db.prepare('INSERT INTO announcements (id, message) VALUES (1, ?)')
+          .run("📢 Reto de la semana: ¡Cread conexiones entre proyectos de Electrónica e Informática!");
     }
 };
 

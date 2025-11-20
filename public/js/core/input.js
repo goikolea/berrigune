@@ -3,8 +3,8 @@ import { app, world } from './app.js';
 export class InputManager {
     constructor() {
         this.keys = {};
-        this.target = null; // Destino click-to-move
-        this.onSpacePressed = null; // Callback
+        this.target = null; 
+        this.onSpacePressed = null; 
 
         this._initListeners();
     }
@@ -12,39 +12,53 @@ export class InputManager {
     _initListeners() {
         // Teclado
         window.addEventListener('keydown', (e) => {
+            // --- FIX: Ignorar teclas si estamos escribiendo en un formulario ---
+            const tag = document.activeElement.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+                return; 
+            }
+            // ------------------------------------------------------------------
+
             this.keys[e.code] = true;
+            
+            // Evitar scroll del navegador con espacio
+            if (e.code === 'Space') e.preventDefault(); 
+
             if (e.code === 'Space' && this.onSpacePressed) {
                 this.onSpacePressed();
             }
         });
+        
         window.addEventListener('keyup', (e) => this.keys[e.code] = false);
 
         // Ratón (Click en suelo)
         app.stage.on('pointerdown', (e) => {
+            // Esta lógica la maneja main.js con más detalle ahora
+            // pero mantenemos el target básico por si acaso
             const globalPos = e.global;
-            // Calculamos posición en el mundo relativo
             this.target = {
                 x: globalPos.x - world.x,
                 y: globalPos.y - world.y
             };
             
-            // Disparar evento visual (feedback)
-            this._createClickFeedback(this.target.x, this.target.y);
+            // El feedback visual ahora lo gestiona main.js
+            // this._createClickFeedback(...); 
         });
     }
 
-    // Calcula el vector de dirección basado en teclas
     getDirection() {
         let x = 0, y = 0;
+        // Comprobamos también aquí por seguridad, aunque el listener ya filtra
+        const tag = document.activeElement.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return { x: 0, y: 0, usingKeys: false };
+
         if (this.keys['KeyW'] || this.keys['ArrowUp']) y = -1;
         if (this.keys['KeyS'] || this.keys['ArrowDown']) y = 1;
         if (this.keys['KeyA'] || this.keys['ArrowLeft']) x = -1;
         if (this.keys['KeyD'] || this.keys['ArrowRight']) x = 1;
 
-        // Si hay input de teclado, anulamos el click-to-move
         if (x !== 0 || y !== 0) {
             this.target = null;
-            // Normalizar vector
             const len = Math.sqrt(x*x + y*y);
             if (len > 0) { x /= len; y /= len; }
         }
@@ -52,12 +66,8 @@ export class InputManager {
         return { x, y, usingKeys: (x !== 0 || y !== 0) };
     }
 
-    // Efecto visual simple al hacer click
     _createClickFeedback(x, y) {
-        const { layers } = require('./app.js'); // Import dinámico para evitar ciclos
-        // Nota: En ES modules puros esto se maneja pasando layers al constructor, 
-        // pero para simplificar este ejemplo usaremos una lógica simple o lo omitimos aquí.
-        // (Implementaremos el feedback visual en main.js para mantener input.js puro)
+        // Placeholder, se inyecta desde main.js
     }
 }
 

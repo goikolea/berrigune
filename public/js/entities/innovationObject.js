@@ -1,11 +1,12 @@
 import { layers } from '../core/app.js';
 import { COLORS, WORLD } from '../config/constants.js';
-import { openSidebar } from '../ui/sidebar.js';
+// Eliminamos la importación directa de openSidebar, ya que ahora lo gestiona main.js
+// import { openSidebar } from '../ui/sidebar.js'; <--- BORRAR ESTA LÍNEA
 
 export const objects = [];
 let selectedObject = null; 
 
-// Función auxiliar para dibujar formas geométricas
+// Función auxiliar para dibujar formas geométricas (Sin cambios)
 function drawShape(graphics, type, size, color) {
     graphics.clear();
     graphics.lineStyle(2, 0xFFFFFF, 1);
@@ -84,7 +85,7 @@ export function createObject(data) {
     label.alpha = 0; 
     container.addChild(label);
 
-    // --- REFERENCIA LÓGICA ---
+    // --- REFERENCIA LÓGICA (ACTUALIZADA) ---
     const objRef = { 
         container, shape, shadow, label, connectionLine,
         hoverTime: Math.random() * 10,
@@ -92,17 +93,19 @@ export function createObject(data) {
         appearing: true,
         baseRotation: shape.rotation,
         colorRef: data.cat_color,
-        catNameRef: data.cat_name // <--- AÑADIR ESTA LÍNEA
+        catNameRef: data.cat_name,
+        dataRef: data, // <--- IMPORTANTE: Guardamos los datos crudos aquí
+        isHovered: false
     };
 
     objects.push(objRef);
 
-    // --- EVENTOS ---
+    // --- EVENTOS (ACTUALIZADO PARA USAR EL SISTEMA CENTRAL) ---
     
     container.on('pointerdown', (e) => {
-        e.stopPropagation(); 
+        e.stopPropagation(); // Evitar clic en suelo
         
-        // Deseleccionar el anterior
+        // Deseleccionar el anterior visualmente
         if (selectedObject && selectedObject !== objRef) {
             selectedObject.selected = false;
         }
@@ -110,34 +113,24 @@ export function createObject(data) {
         objRef.selected = true;
         selectedObject = objRef;
         
-        openSidebar({ 
-            type: data.type_name, 
-            title: data.title, 
-            description: data.description, 
-            link: data.link,
-            category: data.cat_name, // Pasamos nombre de categoría
-            color: data.cat_color    // Pasamos color para el badge
-        }, () => {
-            // Callback al cerrar sidebar
-            objRef.selected = false;
-            selectedObject = null;
-        });
+        // DELEGAMOS LA LÓGICA A MAIN.JS (Gestor de modos)
+        // Si window.handleObjectClick existe (definido en main.js), lo usamos.
+        if (window.handleObjectClick) {
+            window.handleObjectClick(objRef, e);
+        }
     });
 
-    // Solo cambiamos la bandera, NO el color directamente
     container.on('pointerover', () => { objRef.isHovered = true; });
     container.on('pointerout', () => { objRef.isHovered = false; });
 
     layers.objects.addChild(container);
-    objects.push(objRef);
 }
 
 export function updateObjects(delta, playerPos) {
     for (const obj of objects) {
         obj.hoverTime += 0.05 * delta;
         
-        // 1. ANIMACIÓN (Flotar)
-        // Si seleccionado -> Muy activo. Si Hover -> Un poco activo. Normal -> Suave.
+        // Animación
         let floatAmp = 3;
         if (obj.selected) floatAmp = 6;
         else if (obj.isHovered) floatAmp = 4;
@@ -146,35 +139,28 @@ export function updateObjects(delta, playerPos) {
         obj.shape.y = hoverY;
         obj.shadow.scale.set(1 - (hoverY * 0.03));
 
-        // 2. ROTACIÓN
+        // Rotación
         if (obj.selected) {
             obj.shape.rotation += 0.05 * delta;
         } else if (obj.isHovered) {
-            // Pequeña oscilación si haces hover
             obj.shape.rotation = obj.baseRotation + Math.sin(obj.hoverTime * 5) * 0.1; 
         } else {
-            // Volver a base
             obj.shape.rotation += (obj.baseRotation - obj.shape.rotation) * 0.1;
         }
 
-        // 3. COLOR / TINT (Lógica centralizada)
-        // Prioridad: Selected > Hovered > Normal
+        // Tint / Escala
         if (obj.selected) {
-            obj.shape.tint = 0xFFFFFF; // Color original (o podrías poner un highlight específico)
-            // Nota: Pixi tint multiplica. 0xFFFFFF es "sin cambios".
-            // Para "iluminar" más allá del color base, necesitaríamos filtros, 
-            // pero para feedback simple, usaremos la escala.
-            obj.shape.scale.set(1.2); // Se hace grande al seleccionar
+            obj.shape.tint = 0xFFFFFF; 
+            obj.shape.scale.set(1.2); 
         } else if (obj.isHovered) {
-            obj.shape.tint = 0xFFF0A0; // Amarillo claro overlay
-            obj.shape.scale.set(1.1); // Un poco más grande
+            obj.shape.tint = 0xFFF0A0; 
+            obj.shape.scale.set(1.1); 
         } else {
-            obj.shape.tint = 0xFFFFFF; // Color normal
-            // Efecto pop-in o vuelta a normal
+            obj.shape.tint = 0xFFFFFF; 
             if (!obj.appearing) obj.shape.scale.set(1); 
         }
 
-        // 4. CONEXIÓN
+        // Conexión visual al jugador (línea sólida de proximidad)
         const dx = playerPos.x - obj.container.x;
         const dy = playerPos.y - obj.container.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
@@ -192,10 +178,9 @@ export function updateObjects(delta, playerPos) {
             obj.connectionLine.endFill();
         } else {
             if (!obj.selected && !obj.isHovered) obj.label.alpha += (0 - obj.label.alpha) * 0.2;
-            if (obj.isHovered) obj.label.alpha = 1; // Si hay hover, mostramos etiqueta siempre
+            if (obj.isHovered) obj.label.alpha = 1; 
         }
         
-        // 5. POP IN
         if (obj.appearing) {
             if (obj.shape.scale.x < 1) {
                 obj.shape.scale.x += 0.1 * delta;
@@ -211,7 +196,5 @@ export function deselectAllObjects() {
     if (selectedObject) {
         selectedObject.selected = false;
         selectedObject = null;
-        // Al poner selected = false, el bucle updateObjects
-        // se encargará en el siguiente frame de devolver el color y tamaño a la normalidad.
     }
 }

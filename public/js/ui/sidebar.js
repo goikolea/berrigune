@@ -1,4 +1,10 @@
+import { openConnectionModal } from './connectionModal.js';
+import { api } from '../services/api.js';
+import { objects } from '../entities/innovationObject.js';
+
 let onCloseCallback = null;
+let currentObject = null; 
+let onConnDeletedCallback = null; 
 
 const styles = `
     #sidebar {
@@ -9,98 +15,89 @@ const styles = `
         transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
         z-index: 9999;
         display: flex; flex-direction: column;
-        overflow-y: auto; /* HACER SCROLL SI EL TEXTO ES LARGO */
+        overflow-y: auto;
     }
     #sidebar.active { right: 0; }
     
-    /* Contenedor de etiquetas */
-    .badges-row {
-        display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;
-    }
+    .badges-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .badge { padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .badge-type { background: #1a1a1a; color: #fff; }
+    .badge-cat { background: #f0f0f0; color: #333; border: 1px solid #ddd; }
 
-    .badge { 
-        display: inline-block;
-        padding: 6px 12px; border-radius: 6px; 
-        font-size: 11px; font-weight: 700; 
-        text-transform: uppercase; letter-spacing: 0.5px;
-    }
-
-    /* Estilo por defecto (Tipo) */
-    .badge-type {
-        background: #1a1a1a; color: #fff; 
-    }
-
-    /* Estilo dinámico (Categoría) */
-    .badge-cat {
-        background: #f0f0f0; color: #333; border: 1px solid #ddd;
-    }
-
-    .sidebar-title { 
-        font-size: 28px; font-weight: 800; color: #1a1a1a; 
-        margin: 0 0 20px 0; line-height: 1.2; 
-    }
+    .sidebar-title { font-size: 28px; font-weight: 800; color: #1a1a1a; margin: 0 0 15px 0; }
+    .sidebar-text { font-size: 16px; color: #444; line-height: 1.6; margin-bottom: 30px; white-space: pre-line; }
     
-    .sidebar-text { 
-        font-size: 16px; color: #444; line-height: 1.6; 
-        margin-bottom: 30px; white-space: pre-line; /* Respetar saltos de línea */
-    }
+    .action-btn { background: #1a1a1a; color: #fff; padding: 12px 24px; border-radius: 6px; font-weight: 600; text-decoration: none; display: inline-block; }
     
-    .action-btn { 
-        background: #1a1a1a; color: #fff; text-decoration: none; 
-        padding: 12px 24px; border-radius: 6px; font-weight: 600; 
-        text-align: center; align-self: flex-start; transition: transform 0.1s;
-        display: inline-block;
-    }
-    .action-btn:hover { transform: translateY(-2px); background: #333; }
+    .header-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 30px; margin-bottom: 10px; }
+    .btn-icon { background: #f5f5f7; border: 1px solid #ddd; width: 42px; height: 42px; border-radius: 8px; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+    .btn-icon:hover { background: #e0e0e0; transform: scale(1.05); }
+
+    .close-btn { position: absolute; top: 20px; right: 20px; background: none; border: none; font-size: 28px; cursor: pointer; color: #999; }
     
-    .close-btn { 
-        position: absolute; top: 20px; right: 20px; 
-        background: none; border: none; font-size: 24px; cursor: pointer; color: #999;
+    .conn-list-section { margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; }
+    .conn-header { font-size: 14px; font-weight: 700; color: #999; text-transform: uppercase; margin-bottom: 15px; }
+    .conn-item { 
+        background: #fff; border: 1px solid #eee; border-radius: 8px; 
+        padding: 12px; margin-bottom: 10px; font-size: 14px; 
+        display: flex; justify-content: space-between; align-items: center;
     }
-    .close-btn:hover { color: #1a1a1a; }
+    .conn-info { flex: 1; }
+    .conn-target { font-weight: 700; color: #333; display: block; }
+    .conn-desc { font-size: 12px; color: #666; font-style: italic; }
+    
+    /* ESTILO DEL BOTÓN BORRAR */
+    .btn-delete-conn { 
+        display: inline-flex; align-items: center; justify-content: center;
+        background: #FFF0F0; color: #E04F5F; border: 1px solid #fad0d0;
+        border-radius: 4px; width: 24px; height: 24px; 
+        cursor: pointer; font-size: 14px; margin-left: 10px; line-height: 1;
+        transition: background 0.2s;
+    }
+    .btn-delete-conn:hover { background: #ffdbdb; border-color: #E04F5F; }
 `;
 
 export function initSidebar() {
     if (document.getElementById('sidebar')) return;
+    const s = document.createElement("style"); s.innerText = styles; document.head.appendChild(s);
 
-    const styleSheet = document.createElement("style");
-    styleSheet.innerText = styles;
-    document.head.appendChild(styleSheet);
-
-    const sidebar = document.createElement('div');
-    sidebar.id = 'sidebar';
-    sidebar.innerHTML = `
+    const sb = document.createElement('div');
+    sb.id = 'sidebar';
+    sb.innerHTML = `
         <button class="close-btn" id="close-sidebar">×</button>
-        
-        <div class="badges-row">
-            <span id="ui-badge-type" class="badge badge-type">Tipo</span>
-            <span id="ui-badge-cat" class="badge badge-cat">Categoría</span>
+        <div class="header-actions">
+            <button id="sidebar-btn-conn" class="btn-icon" title="Conectar">🔗</button>
         </div>
-
-        <h2 id="ui-title" class="sidebar-title">Título</h2>
-        <p id="ui-text" class="sidebar-text">Descripción</p>
+        <div class="badges-row">
+            <span id="ui-badge-type" class="badge badge-type"></span>
+            <span id="ui-badge-cat" class="badge badge-cat"></span>
+        </div>
+        <h2 id="ui-title" class="sidebar-title"></h2>
+        <p id="ui-text" class="sidebar-text"></p>
         <a id="ui-link" href="#" target="_blank" class="action-btn">Ver Recurso</a>
+        
+        <div class="conn-list-section">
+            <div class="conn-header">Conexiones</div>
+            <div id="conn-list-container"></div>
+        </div>
     `;
-    document.body.appendChild(sidebar);
-
+    document.body.appendChild(sb);
     document.getElementById('close-sidebar').onclick = closeSidebar;
 }
 
-// Helper para aclarar/oscurecer colores hexadecimales (para el fondo del badge)
-function adjustColor(color, amount) {
-    return '#' + color.replace(/^#/, '').replace(/../g, color => ('0'+Math.min(255, Math.max(0, parseInt(color, 16) + amount)).toString(16)).substr(-2));
-}
+export function openSidebar(objRef, allConnections, onConnDeleted, onClose) {
+    currentObject = objRef;
+    onConnDeletedCallback = onConnDeleted;
+    onCloseCallback = onClose;
 
-export function openSidebar(data, onClose) {
     const sidebar = document.getElementById('sidebar');
     if (!sidebar) return;
-
-    // 1. Datos básicos
-    document.getElementById('ui-badge-type').innerText = data.type || "Info";
+    
+    const data = objRef.dataRef; 
+    document.getElementById('ui-badge-type').innerText = data.type_name || "Info";
     document.getElementById('ui-title').innerText = data.title || "Sin Título";
     document.getElementById('ui-text').innerText = data.description || "";
     
-    // 2. Link
     const btnLink = document.getElementById('ui-link');
     if (data.link) {
         btnLink.href = data.link;
@@ -110,32 +107,87 @@ export function openSidebar(data, onClose) {
         btnLink.style.display = 'none';
     }
 
-    // 3. Configurar Badge de Categoría (Color + Nombre)
     const badgeCat = document.getElementById('ui-badge-cat');
-    badgeCat.innerText = data.category || "General";
-    
-    // Estilizado dinámico del badge de categoría
-    if (data.color) {
-        // Fondo claro (color + 150 de luz) para que sea pastel
-        // Texto oscuro (color original)
-        // Borde (color original)
-        // Nota: Esto es un truco visual simple.
-        badgeCat.style.backgroundColor = data.color + '20'; // 20 hex = baja opacidad si el navegador soporta rrggbbaa
-        badgeCat.style.color = data.color;
-        badgeCat.style.borderColor = data.color;
-        
-        // Fallback si el color viene en formato simple, ponemos borde a la izquierda
-        badgeCat.style.borderLeft = `4px solid ${data.color}`;
+    badgeCat.innerText = data.cat_name || "General";
+    if (data.cat_color) {
+        badgeCat.style.backgroundColor = data.cat_color + '20'; 
+        badgeCat.style.color = data.cat_color;
+        badgeCat.style.borderColor = data.cat_color;
     }
 
+    document.getElementById('sidebar-btn-conn').onclick = () => openConnectionModal(objRef, null);
+
+    updateConnectionList(allConnections);
+
     sidebar.classList.add('active');
-    onCloseCallback = onClose; 
+}
+
+export function updateConnectionList(allConnections) {
+    if (!currentObject) return;
+    const container = document.getElementById('conn-list-container');
+    container.innerHTML = '';
+
+    const myId = currentObject.dataRef.id;
+    const currentUserId = api.getCurrentUserId();
+
+    // Debug para ver por qué falla
+    console.log("--- DEBUG CONEXIONES ---");
+    console.log("Mi ID Usuario (Logueado):", currentUserId);
+
+    const relevant = allConnections.filter(c => c.source_node_id === myId || c.target_node_id === myId);
+
+    if (relevant.length === 0) {
+        container.innerHTML = '<div style="color:#ccc; font-size:13px;">Sin conexiones</div>';
+        return;
+    }
+
+    relevant.forEach(c => {
+        const isSource = c.source_node_id === myId;
+        const otherId = isSource ? c.target_node_id : c.source_node_id;
+        const otherObj = objects.find(o => o.dataRef.id === otherId);
+        const otherName = otherObj ? otherObj.dataRef.title : 'Nodo desconocido';
+        const relation = c.description || (isSource ? '→' : '←');
+
+        const div = document.createElement('div');
+        div.className = 'conn-item';
+        
+        let html = `
+            <div class="conn-info">
+                <span class="conn-target">${isSource ? '→' : '←'} ${otherName}</span>
+                <span class="conn-desc">${relation}</span>
+            </div>
+        `;
+
+        // COMPARACIÓN ROBUSTA
+        const connUserId = String(c.user_id || "").trim();
+        const myUserIdStr = String(currentUserId || "").trim();
+
+        console.log(`Conexión ${c.id}: Creador [${connUserId}] vs Yo [${myUserIdStr}] -> Iguales? ${connUserId === myUserIdStr}`);
+
+        if (connUserId === myUserIdStr && myUserIdStr !== "") {
+            html += `<button class="btn-delete-conn" data-id="${c.id}" title="Borrar conexión">✕</button>`;
+        }
+
+        div.innerHTML = html;
+        container.appendChild(div);
+    });
+
+    container.querySelectorAll('.btn-delete-conn').forEach(btn => {
+        btn.onclick = async (e) => {
+            if(confirm('¿Borrar esta conexión?')) {
+                try {
+                    await api.deleteConnection(e.target.dataset.id);
+                    if(onConnDeletedCallback) onConnDeletedCallback(); 
+                } catch(err) { alert(err.message); }
+            }
+        };
+    });
 }
 
 export function closeSidebar() {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) sidebar.classList.remove('active');
-    
+    currentObject = null;
     if (onCloseCallback) {
         onCloseCallback();
         onCloseCallback = null;

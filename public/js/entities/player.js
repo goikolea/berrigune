@@ -113,5 +113,16 @@ function _animateJelly(speed, velX, velY, delta) {
         state.rotor.rotation = Math.atan2(velY, velX);
     }
 }
+export function getPlayerPos() {
+    return { x: state.x, y: state.y };
+}
 
-export const getPlayerPos = () => ({ x: state.x, y: state.y });
+// --- NUEVA FUNCIÓN ---
+export function teleportPlayer(x, y) {
+    state.x = x;
+    state.y = y;
+    state.velX = 0;
+    state.velY = 0;
+    state.container.x = x;
+    state.container.y = y;
+}

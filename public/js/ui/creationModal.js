@@ -2,6 +2,13 @@ import { api } from '../services/api.js';
 import { createObject } from '../entities/innovationObject.js';
 import { updateZones } from '../systems/zoneSystem.js';
 
+// --- CALLBACK PARA NOTIFICAR A MAIN.JS ---
+let onNodeCreatedCallback = null;
+
+export function setOnNodeCreated(cb) {
+    onNodeCreatedCallback = cb;
+}
+
 const styles = `
     #create-modal {
         position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -45,6 +52,8 @@ let currentPos = { x: 0, y: 0 };
 let isVisible = false;
 
 export function initCreationModal() {
+    if (document.getElementById('create-modal')) return;
+
     const styleSheet = document.createElement("style");
     styleSheet.innerText = styles;
     document.head.appendChild(styleSheet);
@@ -59,7 +68,6 @@ export function initCreationModal() {
         <div class="modal-header">Nueva Señal de Innovación</div>
         
         <div class="form-section">
-            <!-- 1. TIPO DE SEÑAL (Forma) -->
             <div class="col">
                 <label class="form-label">¿Qué es? (Tipo)</label>
                 <select id="input-type" class="form-control">
@@ -67,7 +75,6 @@ export function initCreationModal() {
                 </select>
             </div>
             
-            <!-- 2. CATEGORÍA (Color) -->
             <div class="col">
                 <label class="form-label">¿De qué Área?</label>
                 <select id="input-cat" class="form-control">
@@ -76,7 +83,6 @@ export function initCreationModal() {
             </div>
         </div>
 
-        <!-- Formulario para crear nueva categoría -->
         <div id="new-cat-section">
             <div class="form-group">
                 <label class="form-label">Nombre Nueva Área</label>
@@ -110,11 +116,9 @@ export function initCreationModal() {
     `;
     document.body.appendChild(modalElement);
 
-    // Listeners
     document.getElementById('btn-cancel-create').onclick = closeCreationModal;
     document.getElementById('btn-save-create').onclick = saveNode;
     
-    // Listener para mostrar "Nueva Categoría"
     document.getElementById('input-cat').addEventListener('change', (e) => {
         const section = document.getElementById('new-cat-section');
         if (e.target.value === 'NEW') {
@@ -129,17 +133,14 @@ export function initCreationModal() {
 
 async function loadFormData() {
     try {
-        // Cargar Tipos y Categorías en paralelo
         const [types, cats] = await Promise.all([
             api.getSignalTypes(),
             api.getCategories()
         ]);
 
-        // Rellenar Tipos (Idea, Reto...)
         const selectType = document.getElementById('input-type');
         selectType.innerHTML = types.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
 
-        // Rellenar Categorías (Informática, Electrónica...)
         const selectCat = document.getElementById('input-cat');
         let htmlCat = cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
         htmlCat += `<option value="NEW" style="font-weight:bold; color:#4A90E2;">+ Nueva Área...</option>`;
@@ -154,14 +155,12 @@ export function openCreationModal(x, y) {
     currentPos = { x, y };
     isVisible = true;
     
-    // Reset Inputs
     document.getElementById('input-title').value = "";
     document.getElementById('input-desc').value = "";
     document.getElementById('input-link').value = "";
     document.getElementById('new-cat-name').value = "";
     document.getElementById('new-cat-section').classList.remove('active');
     
-    // Reset selects
     const selectCat = document.getElementById('input-cat');
     if (selectCat.options.length > 0) selectCat.selectedIndex = 0;
 
@@ -191,10 +190,9 @@ async function saveNode() {
     const payload = {
         x: currentPos.x, y: currentPos.y,
         title, description: desc, link,
-        signal_type_id: typeSelect.value // Enviamos el ID del tipo seleccionado
+        signal_type_id: typeSelect.value
     };
 
-    // Gestionar nueva categoría
     if (catSelect.value === 'NEW') {
         const newName = document.getElementById('new-cat-name').value;
         if (!newName) return alert("Escribe nombre para el área nueva");
@@ -209,14 +207,21 @@ async function saveNode() {
     }
 
     try {
+        // 1. Guardar
         const newNode = await api.createNode(payload);
-        createObject(newNode);
-        updateZones(); // <--- ACTUALIZAR ZONAS AL PLANTAR NUEVA IDEA
         
-        if (payload.is_new_category) loadFormData(); // Recargar lista si creamos una nueva
+        // 2. Crear Visualmente
+        createObject(newNode);
+        updateZones(); 
+        
+        // 3. Notificar para actualizar Directorio
+        if (onNodeCreatedCallback) {
+            onNodeCreatedCallback(newNode);
+        }
+        
+        if (payload.is_new_category) loadFormData(); 
         closeCreationModal();
     } catch (e) {
         alert("Error: " + e.message);
     }
-    
 }
