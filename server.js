@@ -13,10 +13,28 @@ app.use(bodyParser.json());
 
 // --- CONFIGURACIÓN CENTRALIZADA ---
 const DOMAIN = process.env.ALLOWED_DOMAIN || 'local.test';
-const JWT_SECRET = process.env.JWT_SECRET || "CLAVE_POR_DEFECTO_INSEGURA"; 
+
+// [FIX 1] JWT SECRET SECURITY
+// Fail fast if secret is missing in production
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    console.error("   ERROR: JWT_SECRET is not defined in .env file.");
+    console.error("   Please create a .env file with JWT_SECRET=your_secure_random_string");
+    process.exit(1); // Stop server to prevent insecure deployment
+}
+
 const CODIGO_CENTRO = process.env.CODIGO_CENTRO || "1234"; 
 
 console.log(`🚀 Configuración cargada: Dominio @${DOMAIN}`);
+
+// --- HELPER FUNCTIONS ---
+
+// [FIX 2] Helper to sanitize user object (remove password hash)
+const sanitizeUser = (user) => {
+    if (!user) return null;
+    const { password, ...safeUser } = user;
+    return safeUser;
+};
 
 // --- MIDDLEWARES ---
 
@@ -92,9 +110,18 @@ app.post('/api/activate', (req, res) => {
     // Guardar
     db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hash, user.id);
 
+    // Update local user object to reflect change (but don't send hash)
+    const updatedUser = { ...user, password: hash }; // temporary for token generation if needed
+    
     // Login automático tras activar
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
-    res.json({ user, token, message: "Cuenta activada correctamente" });
+    
+    // [FIX 2] Sanitize response
+    res.json({ 
+        user: sanitizeUser(updatedUser), 
+        token, 
+        message: "Cuenta activada correctamente" 
+    });
 });
 
 // 2. LOGIN NORMAL
@@ -120,7 +147,12 @@ app.post('/api/login', (req, res) => {
     }
 
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
-    res.json({ user, token });
+    
+    // [FIX 2] Sanitize response
+    res.json({ 
+        user: sanitizeUser(user), 
+        token 
+    });
 });
 
 
@@ -277,8 +309,20 @@ app.get('/api/announcement', authenticateToken, (req, res) => {
 
 // 1. Listar Usuarios
 app.get('/api/admin/users', authenticateToken, requireAdmin, (req, res) => {
-    const users = db.prepare('SELECT id, email, name, role, password, created_at FROM users ORDER BY created_at DESC').all();
-    res.json(users);
+    // [FIX 3] Do not select password at all in the query
+    const users = db.prepare('SELECT id, email, name, role, created_at FROM users ORDER BY created_at DESC').all();
+    
+    // Add a virtual property to frontend knows if it's pending or active, without sending the hash
+    const usersWithStatus = users.map(u => {
+        const checkPass = db.prepare('SELECT password FROM users WHERE id = ?').get(u.id);
+        // We inject a boolean "hasPassword" instead of the password itself
+        return { 
+            ...u, 
+            password: checkPass && checkPass.password ? 'HASHED' : null // Frontend logic checks if(password)
+        };
+    });
+    
+    res.json(usersWithStatus);
 });
 
 // 2. Alta Masiva (Usando DOMAIN variable)
