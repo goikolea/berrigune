@@ -1,9 +1,9 @@
 // js/services/api.js
 
-let authToken = localStorage.getItem('campus_token'); // Recuperar token
-let currentUserId = null; // Guardaremos solo el ID, que es lo que importa para comparar
+let authToken = localStorage.getItem('campus_token');
+let currentUserId = null;
+let currentUserRole = 'user'; // Variable crítica
 
-// --- FUNCIÓN AUXILIAR PARA LEER EL JWT ---
 function parseJwt (token) {
     try {
         const base64Url = token.split('.')[1];
@@ -12,17 +12,15 @@ function parseJwt (token) {
             return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
         }).join(''));
         return JSON.parse(jsonPayload);
-    } catch (e) {
-        return null;
-    }
+    } catch (e) { return null; }
 }
 
-// --- INICIALIZACIÓN INMEDIATA ---
-// Si hay token guardado, extraemos el ID del usuario al instante
+// Inicialización al cargar la página (F5)
 if (authToken) {
     const payload = parseJwt(authToken);
-    if (payload && payload.id) {
+    if (payload) {
         currentUserId = payload.id;
+        currentUserRole = payload.role || 'user';
     }
 }
 
@@ -33,50 +31,87 @@ const getHeaders = () => ({
 
 export const api = {
     isLoggedIn: () => !!authToken,
-
-    // Devuelve el ID decodificado del token
     getCurrentUserId: () => currentUserId,
+    isAdmin: () => currentUserRole === 'admin', // Chequeo de rol
 
-    login: async (email, code) => {
-        const res = await fetch('/api/login', {
+    getPublicConfig: async () => {
+        const res = await fetch('/api/public-config');
+        return res.json();
+    },
+
+    checkUserStatus: async (email) => {
+        const res = await fetch('/api/check-user', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, code })
+            body: JSON.stringify({ email })
         });
-        if (!res.ok) throw new Error('Login fallido');
-        
+        return res.json();
+    },
+
+    activate: async (email, centerCode, newPassword) => {
+        const res = await fetch('/api/activate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, centerCode, newPassword })
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Error al activar');
+        }
         const data = await res.json();
         
-        // Guardar Token
         authToken = data.token;
         localStorage.setItem('campus_token', authToken);
         
-        // Actualizar ID en memoria leyendo del nuevo token
+        // --- ACTUALIZACIÓN INMEDIATA DE VARIABLES ---
         const payload = parseJwt(authToken);
-        if (payload) currentUserId = payload.id;
+        if (payload) {
+            currentUserId = payload.id;
+            currentUserRole = payload.role; 
+        }
 
-        return data.user;
+        return data; // Devolvemos data completo
     },
 
+    login: async (email, password) => {
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Login fallido');
+        }
+        const data = await res.json();
+        
+        authToken = data.token;
+        localStorage.setItem('campus_token', authToken);
+        
+        // --- ACTUALIZACIÓN INMEDIATA DE VARIABLES (FIX PANTALLA GRIS) ---
+        const payload = parseJwt(authToken);
+        if (payload) {
+            currentUserId = payload.id;
+            currentUserRole = payload.role; 
+        }
+
+        return data; // Devolvemos data completo (coherencia con activate)
+    },
+
+    
     getCategories: async () => {
         const res = await fetch('/api/categories', { headers: getHeaders() });
         return res.json();
     },
-    
     getSignalTypes: async () => {
         const res = await fetch('/api/signal-types', { headers: getHeaders() });
         return res.json();
     },
-
     getNodes: async () => {
         const res = await fetch('/api/nodes', { headers: getHeaders() });
-        if (res.status === 401) {
-            api.logout(); // Si el token caducó, fuera
-            return null;
-        }
+        if (res.status === 401) { api.logout(); return null; }
         return res.json();
     },
-
     createNode: async (nodeData) => {
         const res = await fetch('/api/nodes', {
             method: 'POST',
@@ -86,12 +121,10 @@ export const api = {
         if (!res.ok) throw new Error('Error guardando nodo');
         return res.json();
     },
-
     getConnections: async () => {
         const res = await fetch('/api/connections', { headers: getHeaders() });
         return res.json();
     },
-
     createConnection: async (connData) => {
         const res = await fetch('/api/connections', {
             method: 'POST',
@@ -101,7 +134,6 @@ export const api = {
         if (!res.ok) throw new Error('Error conectando nodos');
         return res.json();
     },
-
     deleteConnection: async (id) => {
         const res = await fetch(`/api/connections/${id}`, {
             method: 'DELETE',
@@ -110,7 +142,6 @@ export const api = {
         if (!res.ok) throw new Error('Error borrando conexión');
         return res.json();
     },
-
     updateNodePosition: async (id, x, y) => {
         const res = await fetch(`/api/nodes/${id}/position`, {
             method: 'PUT',
@@ -120,21 +151,78 @@ export const api = {
         if (!res.ok) throw new Error('No puedes mover este nodo');
         return res.json();
     },
-    
-    logout: () => {
-        authToken = null;
-        currentUserId = null;
-        localStorage.removeItem('campus_token');
-        window.location.reload();
+    registerVisit: async (nodeId) => {
+        await fetch(`/api/visit/${nodeId}`, { method: 'POST', headers: getHeaders() });
     },
-
     getUserStats: async () => {
         const res = await fetch('/api/user-stats', { headers: getHeaders() });
         return res.json();
     },
-    
     getAnnouncement: async () => {
         const res = await fetch('/api/announcement', { headers: getHeaders() });
         return res.json();
+    },
+    
+    // ADMIN
+    getAdminUsers: async () => {
+        const res = await fetch('/api/admin/users', { headers: getHeaders() });
+        return res.json();
+    },
+    addAdminUsers: async (emailsStr) => {
+        const res = await fetch('/api/admin/users', {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ emails: emailsStr })
+        });
+        return res.json();
+    },
+    deleteUser: async (id) => {
+        await fetch(`/api/admin/users/${id}`, { method: 'DELETE', headers: getHeaders() });
+    },
+    adminResetUser: async (id) => {
+        await fetch(`/api/admin/users/reset/${id}`, { method: 'POST', headers: getHeaders() });
+    },
+    updateAnnouncement: async (msg) => {
+        await fetch('/api/admin/announcement', {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ message: msg })
+        });
+    },
+    getAdminContent: async () => {
+        const res = await fetch('/api/admin/content', { headers: getHeaders() });
+        return res.json();
+    },
+    adminDeleteNode: async (id) => {
+        await fetch(`/api/admin/nodes/${id}`, { method: 'DELETE', headers: getHeaders() });
+    },
+    adminDeleteConn: async (id) => {
+        await fetch(`/api/admin/connections/${id}`, { method: 'DELETE', headers: getHeaders() });
+    },
+    adminUpdateNode: async (id, data) => {
+        const res = await fetch(`/api/admin/nodes/${id}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (!res.ok) throw new Error("Error actualizando nodo");
+        return res.json();
+    },
+    adminUpdateConnection: async (id, description) => {
+        const res = await fetch(`/api/admin/connections/${id}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify({ description })
+        });
+        if (!res.ok) throw new Error("Error actualizando conexión");
+        return res.json();
+    },
+
+    logout: () => {
+        authToken = null;
+        currentUserId = null;
+        currentUserRole = 'user';
+        localStorage.removeItem('campus_token');
+        window.location.reload();
     }
 };

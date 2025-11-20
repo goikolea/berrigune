@@ -157,7 +157,7 @@ export function initUserProfile() {
     };
 }
 
-async function updateProfileData() {
+export async function updateProfileData() {
     try {
         const stats = await api.getUserStats();
         
