@@ -94,13 +94,20 @@ export function openSidebar(objRef, allConnections, onConnDeleted, onClose) {
     if (!sidebar) return;
     
     const data = objRef.dataRef; 
+    // innerText es seguro contra XSS
     document.getElementById('ui-badge-type').innerText = data.type_name || "Info";
     document.getElementById('ui-title').innerText = data.title || "Sin Título";
     document.getElementById('ui-text').innerText = data.description || "";
     
     const btnLink = document.getElementById('ui-link');
     if (data.link) {
-        btnLink.href = data.link;
+        // Basic href sanitization: check protocol
+        const safeLink = data.link.trim();
+        if(safeLink.startsWith('http://') || safeLink.startsWith('https://')) {
+            btnLink.href = safeLink;
+        } else {
+             btnLink.href = '#'; // Prevent javascript: attacks
+        }
         btnLink.style.display = 'inline-block';
         btnLink.innerText = "Abrir Enlace";
     } else {
@@ -130,10 +137,6 @@ export function updateConnectionList(allConnections) {
     const myId = currentObject.dataRef.id;
     const currentUserId = api.getCurrentUserId();
 
-    // Debug para ver por qué falla
-    console.log("--- DEBUG CONEXIONES ---");
-    console.log("Mi ID Usuario (Logueado):", currentUserId);
-
     const relevant = allConnections.filter(c => c.source_node_id === myId || c.target_node_id === myId);
 
     if (relevant.length === 0) {
@@ -151,36 +154,44 @@ export function updateConnectionList(allConnections) {
         const div = document.createElement('div');
         div.className = 'conn-item';
         
-        let html = `
-            <div class="conn-info">
-                <span class="conn-target">${isSource ? '→' : '←'} ${otherName}</span>
-                <span class="conn-desc">${relation}</span>
-            </div>
-        `;
+        // --- CONSTRUCCIÓN SEGURA DEL DOM PARA EL ITEM ---
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'conn-info';
 
-        // COMPARACIÓN ROBUSTA
+        const targetSpan = document.createElement('span');
+        targetSpan.className = 'conn-target';
+        targetSpan.textContent = (isSource ? '→ ' : '← ') + otherName; // Safe text
+
+        const descSpan = document.createElement('span');
+        descSpan.className = 'conn-desc';
+        descSpan.textContent = relation; // Safe text
+
+        infoDiv.appendChild(targetSpan);
+        infoDiv.appendChild(descSpan);
+        div.appendChild(infoDiv);
+
+        // Botón de borrar (Solo si soy el dueño)
         const connUserId = String(c.user_id || "").trim();
         const myUserIdStr = String(currentUserId || "").trim();
 
-        console.log(`Conexión ${c.id}: Creador [${connUserId}] vs Yo [${myUserIdStr}] -> Iguales? ${connUserId === myUserIdStr}`);
-
         if (connUserId === myUserIdStr && myUserIdStr !== "") {
-            html += `<button class="btn-delete-conn" data-id="${c.id}" title="Borrar conexión">✕</button>`;
+            const btnDel = document.createElement('button');
+            btnDel.className = 'btn-delete-conn';
+            btnDel.title = "Borrar conexión";
+            btnDel.textContent = "✕";
+            btnDel.onclick = async (e) => {
+                e.stopPropagation();
+                if(confirm('¿Borrar esta conexión?')) {
+                    try {
+                        await api.deleteConnection(c.id);
+                        if(onConnDeletedCallback) onConnDeletedCallback(); 
+                    } catch(err) { alert(err.message); }
+                }
+            };
+            div.appendChild(btnDel);
         }
 
-        div.innerHTML = html;
         container.appendChild(div);
-    });
-
-    container.querySelectorAll('.btn-delete-conn').forEach(btn => {
-        btn.onclick = async (e) => {
-            if(confirm('¿Borrar esta conexión?')) {
-                try {
-                    await api.deleteConnection(e.target.dataset.id);
-                    if(onConnDeletedCallback) onConnDeletedCallback(); 
-                } catch(err) { alert(err.message); }
-            }
-        };
     });
 }
 

@@ -142,8 +142,6 @@ export function initAdminPanel(isStandalone = false) {
     document.body.appendChild(dashboard);
 
     // --- EVENT HANDLERS ---
-
-    // Cerrar/Logout
     document.getElementById('close-admin').onclick = () => {
         if (isStandalone) {
             if(confirm("¿Cerrar sesión Master?")) api.logout();
@@ -177,7 +175,7 @@ export function initAdminPanel(isStandalone = false) {
         };
     });
 
-    // Acciones Básicas
+    // Acciones
     document.getElementById('btn-add-users').onclick = async () => {
         const val = document.getElementById('bulk-emails').value;
         const res = await api.addAdminUsers(val);
@@ -191,7 +189,7 @@ export function initAdminPanel(isStandalone = false) {
         alert("Anuncio actualizado");
     };
 
-    // --- LÓGICA MODAL EDICIÓN ---
+    // --- MODAL EDICIÓN HANDLERS ---
     const editOverlay = document.getElementById('edit-modal-overlay');
     
     document.getElementById('btn-cancel-edit').onclick = () => {
@@ -217,7 +215,7 @@ export function initAdminPanel(isStandalone = false) {
             
             alert("Actualizado correctamente");
             editOverlay.classList.remove('active');
-            loadTabData('content'); // Recargar lista
+            loadTabData('content'); 
 
         } catch (e) {
             alert("Error: " + e.message);
@@ -225,27 +223,80 @@ export function initAdminPanel(isStandalone = false) {
     };
 }
 
+// --- HELPER: Crear Tabla de forma segura sin innerHTML ---
+function createTable(headers, rowsData, renderRowCallback) {
+    const table = document.createElement('table');
+    
+    // Header
+    const thead = document.createElement('thead');
+    const trHead = document.createElement('tr');
+    headers.forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h;
+        trHead.appendChild(th);
+    });
+    thead.appendChild(trHead);
+    table.appendChild(thead);
+
+    // Body
+    const tbody = document.createElement('tbody');
+    rowsData.forEach(item => {
+        const tr = renderRowCallback(item);
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    return table;
+}
+
 async function loadTabData(tab) {
     if (tab === 'users') {
         const users = await api.getAdminUsers();
-        let html = '<table><thead><tr><th>Email</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>';
-        users.forEach(u => {
-            // Detectamos si tiene contraseña (activo) o no (pendiente)
-            const status = u.password ? '<span style="color:green">Activo</span>' : '<span style="color:orange">Pendiente</span>';
+        const container = document.getElementById('users-list-container');
+        container.innerHTML = '';
+
+        const table = createTable(['Email', 'Estado', 'Acciones'], users, (u) => {
+            const tr = document.createElement('tr');
             
-            html += `<tr>
-                <td>${u.email}<br><small style="color:#999">${u.role}</small></td>
-                <td>${status}</td>
-                <td>
-                    ${u.role !== 'admin' ? `
-                        <button class="btn-sm" style="background:#fff3e0; color:#e65100" onclick="window.resetUser('${u.id}')">Reset</button>
-                        <button class="btn-sm btn-del" onclick="window.deleteUser('${u.id}')">Borrar</button>
-                    ` : '-'}
-                </td>
-            </tr>`;
+            // Email Col
+            const tdEmail = document.createElement('td');
+            tdEmail.innerHTML = `${u.email}<br><small style="color:#999">${u.role}</small>`; // Email is mostly safe, role is enum
+            
+            // Status Col
+            const tdStatus = document.createElement('td');
+            const isActive = !!u.password;
+            const statusSpan = document.createElement('span');
+            statusSpan.textContent = isActive ? 'Activo' : 'Pendiente';
+            statusSpan.style.color = isActive ? 'green' : 'orange';
+            tdStatus.appendChild(statusSpan);
+
+            // Actions Col
+            const tdActions = document.createElement('td');
+            if (u.role !== 'admin') {
+                const btnReset = document.createElement('button');
+                btnReset.className = "btn-sm";
+                btnReset.style.cssText = "background:#fff3e0; color:#e65100";
+                btnReset.textContent = "Reset";
+                btnReset.onclick = () => window.resetUser(u.id);
+
+                const btnDel = document.createElement('button');
+                btnDel.className = "btn-sm btn-del";
+                btnDel.textContent = "Borrar";
+                btnDel.onclick = () => window.deleteUser(u.id);
+
+                tdActions.appendChild(btnReset);
+                tdActions.appendChild(btnDel);
+            } else {
+                tdActions.textContent = '-';
+            }
+
+            tr.appendChild(tdEmail);
+            tr.appendChild(tdStatus);
+            tr.appendChild(tdActions);
+            return tr;
         });
-        html += '</tbody></table>';
-        document.getElementById('users-list-container').innerHTML = html;
+
+        container.appendChild(table);
     } 
     else if (tab === 'announcement') {
         const data = await api.getAnnouncement();
@@ -253,45 +304,90 @@ async function loadTabData(tab) {
     }
     else if (tab === 'content') {
         const data = await api.getAdminContent();
-        currentAdminData = data; // Guardar en memoria para editar
+        currentAdminData = data;
+        
+        const container = document.getElementById('content-list-container');
+        container.innerHTML = '';
 
-        // TABLA DE NODOS
-        let html = `<h4 style="margin-bottom:5px">Nodos (${data.nodes.length})</h4>`;
-        html += `<table><thead><tr><th>Título</th><th>Descripción (Extracto)</th><th style="width:120px">Acciones</th></tr></thead><tbody>`;
-        data.nodes.forEach(n => {
-            const shortDesc = (n.description || '').substring(0, 30) + '...';
-            html += `<tr>
-                <td><b>${n.title}</b></td>
-                <td style="color:#666; font-size:12px">${shortDesc}</td>
-                <td>
-                    <button class="btn-sm btn-edit" onclick="window.openEditModal('node', '${n.id}')">Editar</button>
-                    <button class="btn-sm btn-del" onclick="window.adminDeleteNode('${n.id}')">Borrar</button>
-                </td>
-            </tr>`;
+        // 1. Tabla de Nodos
+        const h4Nodes = document.createElement('h4');
+        h4Nodes.textContent = `Nodos (${data.nodes.length})`;
+        h4Nodes.style.marginBottom = '5px';
+        container.appendChild(h4Nodes);
+
+        const nodesTable = createTable(['Título', 'Descripción', 'Acciones'], data.nodes, (n) => {
+            const tr = document.createElement('tr');
+
+            const tdTitle = document.createElement('td');
+            const b = document.createElement('b');
+            b.textContent = n.title; // SAFE
+            tdTitle.appendChild(b);
+
+            const tdDesc = document.createElement('td');
+            tdDesc.style.cssText = "color:#666; font-size:12px";
+            let shortDesc = n.description || '';
+            if (shortDesc.length > 50) shortDesc = shortDesc.substring(0, 50) + '...';
+            tdDesc.textContent = shortDesc; // SAFE
+
+            const tdActions = document.createElement('td');
+            
+            const btnEdit = document.createElement('button');
+            btnEdit.className = "btn-sm btn-edit";
+            btnEdit.textContent = "Editar";
+            btnEdit.onclick = () => window.openEditModal('node', n.id);
+
+            const btnDel = document.createElement('button');
+            btnDel.className = "btn-sm btn-del";
+            btnDel.textContent = "Borrar";
+            btnDel.onclick = () => window.adminDeleteNode(n.id);
+
+            tdActions.appendChild(btnEdit);
+            tdActions.appendChild(btnDel);
+
+            tr.appendChild(tdTitle);
+            tr.appendChild(tdDesc);
+            tr.appendChild(tdActions);
+            return tr;
         });
-        html += '</tbody></table>';
-        
-        // TABLA DE CONEXIONES
-        html += `<h4 style="margin-top:30px; margin-bottom:5px">Conexiones (${data.connections.length})</h4>`;
-        html += `<table><thead><tr><th>Descripción</th><th style="width:120px">Acciones</th></tr></thead><tbody>`;
-        data.connections.forEach(c => {
-            const desc = c.description || 'Sin descripción';
-            html += `<tr>
-                <td>${desc}</td>
-                <td>
-                    <button class="btn-sm btn-edit" onclick="window.openEditModal('connection', '${c.id}')">Editar</button>
-                    <button class="btn-sm btn-del" onclick="window.adminDeleteConn('${c.id}')">Borrar</button>
-                </td>
-            </tr>`;
+        container.appendChild(nodesTable);
+
+        // 2. Tabla de Conexiones
+        const h4Conns = document.createElement('h4');
+        h4Conns.textContent = `Conexiones (${data.connections.length})`;
+        h4Conns.style.cssText = "margin-top:30px; margin-bottom:5px";
+        container.appendChild(h4Conns);
+
+        const connsTable = createTable(['Descripción', 'Acciones'], data.connections, (c) => {
+            const tr = document.createElement('tr');
+
+            const tdDesc = document.createElement('td');
+            tdDesc.textContent = c.description || 'Sin descripción'; // SAFE
+
+            const tdActions = document.createElement('td');
+            tdActions.style.width = "120px";
+
+            const btnEdit = document.createElement('button');
+            btnEdit.className = "btn-sm btn-edit";
+            btnEdit.textContent = "Editar";
+            btnEdit.onclick = () => window.openEditModal('connection', c.id);
+
+            const btnDel = document.createElement('button');
+            btnDel.className = "btn-sm btn-del";
+            btnDel.textContent = "Borrar";
+            btnDel.onclick = () => window.adminDeleteConn(c.id);
+
+            tdActions.appendChild(btnEdit);
+            tdActions.appendChild(btnDel);
+
+            tr.appendChild(tdDesc);
+            tr.appendChild(tdActions);
+            return tr;
         });
-        html += '</tbody></table>';
-        
-        document.getElementById('content-list-container').innerHTML = html;
+        container.appendChild(connsTable);
     }
 }
 
-// --- FUNCIONES GLOBALES (Window) PARA LOS ONCLICK ---
-
+// --- GLOBALS ---
 window.openEditModal = (type, id) => {
     editingType = type;
     editingId = id;
@@ -300,20 +396,17 @@ window.openEditModal = (type, id) => {
     const titleGroup = document.getElementById('field-title-group');
     const linkGroup = document.getElementById('field-link-group');
     
-    // Limpiar campos
     document.getElementById('edit-title').value = '';
     document.getElementById('edit-desc').value = '';
     document.getElementById('edit-link').value = '';
 
     if (type === 'node') {
-        // Buscar datos en memoria
         const node = currentAdminData.nodes.find(n => n.id === id);
         if (node) {
             document.getElementById('edit-title').value = node.title;
             document.getElementById('edit-desc').value = node.description || '';
-            document.getElementById('edit-link').value = node.link || ''; // Si la API devolviera link (asegúrate de que el endpoint GET content devuelve 'link')
+            document.getElementById('edit-link').value = node.link || ''; 
         }
-        // Mostrar campos extra
         titleGroup.style.display = 'block';
         linkGroup.style.display = 'block';
     } 
@@ -322,7 +415,6 @@ window.openEditModal = (type, id) => {
         if (conn) {
             document.getElementById('edit-desc').value = conn.description || '';
         }
-        // Ocultar lo que no aplica a conexiones
         titleGroup.style.display = 'none';
         linkGroup.style.display = 'none';
     }
@@ -349,7 +441,7 @@ window.adminDeleteConn = async (id) => {
     }
 };
 window.resetUser = async (id) => {
-    if(confirm("¿Resetear contraseña de este usuario a estado PENDIENTE? Tendrá que activarla de nuevo.")) {
+    if(confirm("¿Resetear contraseña?")) {
         await api.adminResetUser(id);
         loadTabData('users');
     }

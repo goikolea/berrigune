@@ -2,10 +2,10 @@ import { app, layers, world } from './core/app.js';
 import { input } from './core/input.js';
 import { updateCamera } from './core/camera.js';
 import { createGrid } from './entities/environment.js';
-import { initPlayer, updatePlayer, getPlayerPos, teleportPlayer} from './entities/player.js'; // <--- Importar updatePlayerBadges
+import { initPlayer, updatePlayer, getPlayerPos, teleportPlayer} from './entities/player.js'; 
 import { createObject, updateObjects, deselectAllObjects } from './entities/innovationObject.js';
 import { updateParticles } from './systems/particles.js';
-import { updateZones } from './systems/zoneSystem.js';
+import { updateZones } from './systems/zoneSystem.js'; // Used for organic blobs
 import { initLogin } from './ui/loginModal.js';
 import { api } from './services/api.js';
 
@@ -33,18 +33,13 @@ let globalNodesData = [];
 let dragCameraTarget = { x: 0, y: 0 };
 let lastClickTime = 0;
 
-// --- FUNCIÓN DE GAMIFICACIÓN (FALTABA ESTO) ---
+// [FIX] Variable to control update frequency (Throttling)
+let zoneUpdateThrottle = 0;
+
 async function refreshGamification() {
     try {
-        // Obtenemos stats para actualizar badges del jugador (visuales)
-        // Nota: userProfile.js ya hace su propia llamada al abrirse, 
-        // esto es para efectos en tiempo real en el canvas (si los hubiera)
-        const status = await api.getGamificationStatus(); // Asegúrate de tener este endpoint o usar getUserStats si simplificamos
-        // Si no implementamos badges visuales complejos en el avatar, esta parte es opcional,
-        // pero es buena práctica mantener el estado sincronizado.
-    } catch (e) { 
-        // Silencioso para no spammear consola
-    }
+        // Future implementation for real-time badges
+    } catch (e) { }
 }
 
 async function startGame() {
@@ -86,9 +81,6 @@ async function startGame() {
         await reloadData(); 
     } catch(e) { console.error(e); }
 
-    // --- GAMIFICACIÓN: Loop (FALTABA ESTO) ---
-    // setInterval(refreshGamification, 30000); // Cada 30s (Opcional si queremos badges en tiempo real en el avatar)
-
     setupGameLoop();
 }
 
@@ -98,9 +90,7 @@ function setupGameLoop() {
         if (currentMode === GAME_MODE.DRAGGING) return; 
 
         if (currentMode === GAME_MODE.NORMAL) {
-            // --- REGISTRAR VISITA (FALTABA ESTO) ---
             api.registerVisit(objRef.dataRef.id).catch(e => console.error(e));
-
             showContextMenu(objRef);
             highlightConnections(objRef.dataRef.id);
             import('./ui/sidebar.js').then(m => m.openSidebar(objRef, globalConnectionsData, () => reloadData(), () => { deselectAllObjects(); resetHighlights(); }));
@@ -155,16 +145,30 @@ function setupGameLoop() {
         updateMinimap();
         updateConnections(delta);
 
+        // --- [FIX] LIVE DRAGGING UPDATE ---
         if (currentMode === GAME_MODE.DRAGGING && activeObject) {
             const mouseGlobal = app.renderer.events.pointer.global;
+            
+            // 1. Update Position
             activeObject.container.x = mouseGlobal.x - world.x;
             activeObject.container.y = mouseGlobal.y - world.y;
             activeObject.container.alpha = 0.8;
             activeObject.container.scale.set(1.1);
+
+            // 2. Update Organic Zones (Throttled)
+            // We update zones every ~3 frames (delta is approx 1.0 at 60fps)
+            // This allows the blobs to morph in real-time without killing CPU
+            zoneUpdateThrottle += delta;
+            if (zoneUpdateThrottle > 3.0) { 
+                updateZones();
+                zoneUpdateThrottle = 0;
+            }
         }
+        // ----------------------------------
 
         if (currentMode === GAME_MODE.CONNECTING && activeObject) updateTempConnection(activeObject, playerPos);
         if (currentMode === GAME_MODE.MOVING && activeObject) {
+             // Legacy moving mode (if used)
              activeObject.container.x += (playerPos.x - activeObject.container.x) * 0.2;
              activeObject.container.y += (playerPos.y - 40 - activeObject.container.y) * 0.2;
         }
@@ -175,7 +179,6 @@ function setupGameLoop() {
         if (isModalOpen()) return;
         
         const now = Date.now();
-        // Doble clic ajustado a 250ms
         if (now - lastClickTime < 250 && currentMode === GAME_MODE.NORMAL) {
             const globalPos = e.global;
             openCreationModal(globalPos.x - world.x, globalPos.y - world.y);
@@ -196,7 +199,6 @@ function setupGameLoop() {
     });
 }
 
-// --- FUNCIONES AUXILIARES ---
 async function reloadData() {
     try {
         const conns = await api.getConnections();
@@ -229,9 +231,13 @@ async function finishDrag(obj) {
     obj.container.alpha = 1;
     obj.container.scale.set(1);
     obj.container.eventMode = 'static'; 
+    
+    // [FIX] Force a final high-quality update when dropped
+    updateZones();
+    zoneUpdateThrottle = 0;
+
     try {
         await api.updateNodePosition(obj.dataRef.id, obj.container.x, obj.container.y);
-        updateZones(); 
     } catch (e) { console.error(e); alert("Error al mover"); }
     resetMode();
 }
@@ -242,7 +248,6 @@ function resetMode() {
     clearTempConnection();
 }
 
-// --- PUNTO DE ENTRADA PRINCIPAL ---
 initLogin((user) => {
     console.log("Login exitoso. Rol:", user.role);
     if (user.role === 'admin') {

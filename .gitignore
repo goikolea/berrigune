@@ -1,3 +1,4 @@
 .env
 # ignore the sqlite database
 server/database/campus.sqlite
+node_modules/

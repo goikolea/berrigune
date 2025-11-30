@@ -2,7 +2,6 @@ import { api } from '../services/api.js';
 import { createObject } from '../entities/innovationObject.js';
 import { updateZones } from '../systems/zoneSystem.js';
 
-// --- CALLBACK PARA NOTIFICAR A MAIN.JS ---
 let onNodeCreatedCallback = null;
 
 export function setOnNodeCreated(cb) {
@@ -138,13 +137,27 @@ async function loadFormData() {
             api.getCategories()
         ]);
 
+        // 1. Populate Types (Safe Way)
         const selectType = document.getElementById('input-type');
-        selectType.innerHTML = types.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+        selectType.innerHTML = ''; 
+        types.forEach(t => {
+            const opt = new Option(t.name, t.id);
+            selectType.add(opt);
+        });
 
+        // 2. Populate Categories (Safe Way)
         const selectCat = document.getElementById('input-cat');
-        let htmlCat = cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-        htmlCat += `<option value="NEW" style="font-weight:bold; color:#4A90E2;">+ Nueva Área...</option>`;
-        selectCat.innerHTML = htmlCat;
+        selectCat.innerHTML = '';
+        cats.forEach(c => {
+            const opt = new Option(c.name, c.id);
+            selectCat.add(opt);
+        });
+
+        // Option for New
+        const newOpt = new Option('+ Nueva Área...', 'NEW');
+        newOpt.style.color = "#4A90E2";
+        newOpt.style.fontWeight = "bold";
+        selectCat.add(newOpt);
 
     } catch (e) {
         console.error("Error cargando datos de formulario", e);
@@ -207,14 +220,10 @@ async function saveNode() {
     }
 
     try {
-        // 1. Guardar
         const newNode = await api.createNode(payload);
-        
-        // 2. Crear Visualmente
         createObject(newNode);
         updateZones(); 
         
-        // 3. Notificar para actualizar Directorio
         if (onNodeCreatedCallback) {
             onNodeCreatedCallback(newNode);
         }

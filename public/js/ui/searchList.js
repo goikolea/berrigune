@@ -118,7 +118,7 @@ export function initSearchList(nodesData) {
     `;
     document.body.appendChild(panel);
 
-    // --- EVENTO MODIFICADO: LÓGICA DE EXCLUSIÓN ---
+    // --- EVENTO: LÓGICA DE EXCLUSIÓN ---
     btn.onclick = (e) => {
         e.stopPropagation(); 
         
@@ -149,6 +149,7 @@ export function renderList(nodesData) {
 
     const groups = {};
     nodesData.forEach(node => {
+        // Seguridad: Asegurar que hay un nombre de categoría
         const cat = node.cat_name || 'Otros';
         if (!groups[cat]) groups[cat] = [];
         groups[cat].push(node);
@@ -157,19 +158,31 @@ export function renderList(nodesData) {
     const sortedCats = Object.keys(groups).sort();
 
     sortedCats.forEach(catName => {
+        // 1. Crear Título de Categoría (Safe)
         const title = document.createElement('div');
         title.className = 'search-group-title';
-        title.innerText = catName;
+        title.textContent = catName; // XSS FIX: usar textContent
         content.appendChild(title);
 
         groups[catName].forEach(node => {
+            // 2. Crear Item contenedor
             const item = document.createElement('div');
             item.className = 'search-item';
-            item.title = node.title; 
-            item.innerHTML = `
-                <div class="dot-indicator" style="background:${node.cat_color || '#999'}"></div>
-                <div class="item-title">${node.title}</div>
-            `;
+            item.title = node.title || "Sin título"; 
+
+            // 3. Crear el punto de color
+            const dot = document.createElement('div');
+            dot.className = 'dot-indicator';
+            dot.style.background = node.cat_color || '#999'; // CSS Colors are generally safe here
+
+            // 4. Crear el texto del título (Safe)
+            const itemTitle = document.createElement('div');
+            itemTitle.className = 'item-title';
+            itemTitle.textContent = node.title || "Sin título"; // XSS FIX: usar textContent
+
+            // 5. Ensamblar
+            item.appendChild(dot);
+            item.appendChild(itemTitle);
             
             item.onclick = () => {
                 jumpToNode(node);
