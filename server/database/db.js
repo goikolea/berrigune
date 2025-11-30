@@ -2,10 +2,11 @@ require('dotenv').config();
 const Database = require('better-sqlite3');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const bcrypt = require('bcryptjs'); // <--- NUEVO IMPORT
+const bcrypt = require('bcryptjs'); 
 
 // --- CONFIGURACIÓN ---
 const DOMAIN = process.env.ALLOWED_DOMAIN || 'local.test';
+const MASTER_PASSWORD = process.env.MASTER_PASSWORD || 'admin1234'; // <--- NEW ENV VAR
 
 const dbPath = path.join(__dirname, 'campus.sqlite');
 const db = new Database(dbPath);
@@ -13,9 +14,7 @@ const db = new Database(dbPath);
 const initDB = () => {
     console.log("🔄 Inicializando base de datos...");
 
-    // 1. Usuarios (Añadimos columna password)
-    // password NULL = Usuario Pendiente de Activar
-    // password CON TEXTO = Usuario Activo (Hash)
+    // 1. Usuarios
     db.exec(`
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
@@ -141,19 +140,20 @@ const initDB = () => {
     db.prepare('INSERT OR IGNORE INTO announcements (id, message) VALUES (1, ?)').run("📢 Reto de la semana: ¡Conectad ideas!");
     db.prepare('INSERT OR IGNORE INTO active_challenge (id, description, target_count, cat_source_slug, cat_target_slug) VALUES (1, ?, 5, ?, ?)').run('Conecta Innovación con Informática', 'innovacion', 'informatica');
 
-    // E. SEMBRAR USUARIO MASTER
+    // E. SEMBRAR USUARIO MASTER (UPDATED)
     const masterEmail = `master@${DOMAIN}`;
     const stmtUser = db.prepare('SELECT * FROM users WHERE email = ?');
     
     if (!stmtUser.get(masterEmail)) {
         console.log(`👑 Sembrando Usuario Master (${masterEmail})...`);
         const salt = bcrypt.genSaltSync(10);
-        const hash = bcrypt.hashSync("1234", salt);
+        // Uses the ENV variable or fallback
+        const hash = bcrypt.hashSync(MASTER_PASSWORD, salt);
 
         db.prepare('INSERT INTO users (id, email, name, role, password) VALUES (?, ?, ?, ?, ?)')
           .run(uuidv4(), masterEmail, 'Master', 'admin', hash);
         
-        console.log(`✅ Usuario Master creado: ${masterEmail} / 1234`);
+        console.log(`✅ Usuario Master creado. Password establecida en ENV.`);
     }
 };
 

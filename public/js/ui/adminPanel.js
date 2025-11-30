@@ -68,6 +68,7 @@ export function initAdminPanel(isStandalone = false) {
 
     const dashboard = document.createElement('div');
     dashboard.id = 'admin-dashboard';
+    // HTML Estático seguro
     dashboard.innerHTML = `
         <div class="admin-header">
             <div class="admin-title">Panel de Control Master</div>
@@ -258,9 +259,19 @@ async function loadTabData(tab) {
         const table = createTable(['Email', 'Estado', 'Acciones'], users, (u) => {
             const tr = document.createElement('tr');
             
+            // --- FIX SECURITY: Use textContent instead of innerHTML ---
+            
             // Email Col
             const tdEmail = document.createElement('td');
-            tdEmail.innerHTML = `${u.email}<br><small style="color:#999">${u.role}</small>`; // Email is mostly safe, role is enum
+            
+            const divEmail = document.createElement('div');
+            divEmail.textContent = u.email; // SAFE: No interpreta HTML
+            tdEmail.appendChild(divEmail);
+
+            const smallRole = document.createElement('small');
+            smallRole.style.color = '#999';
+            smallRole.textContent = u.role; // SAFE
+            tdEmail.appendChild(smallRole);
             
             // Status Col
             const tdStatus = document.createElement('td');

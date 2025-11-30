@@ -34,7 +34,7 @@ app.use(
   helmet.contentSecurityPolicy({
     directives: {
       defaultSrc: ["'self'"],
-      // UPDATE: Added 'unsafe-eval' to allow PixiJS to compile shaders
+      // PixiJS requires unsafe-eval sometimes, usually OK for canvas apps
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "cdnjs.cloudflare.com"], 
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:"], 
@@ -120,6 +120,11 @@ app.post('/api/activate', (req, res) => {
 
     if (centerCode !== CODIGO_CENTRO) {
         return setTimeout(() => res.status(403).json({ error: 'Código de Centro incorrecto' }), 500);
+    }
+    
+    // --- NUEVO: Validar longitud de contraseña ---
+    if (!newPassword || newPassword.length < 8) {
+        return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres.' });
     }
 
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);

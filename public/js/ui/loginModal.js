@@ -118,7 +118,7 @@ export async function initLogin(onSuccess) {
                 </div>
                 <div class="input-group">
                     <label class="label">CREA TU CONTRASEÑA</label>
-                    <input type="password" id="inp-new-pass" class="login-input" placeholder="Mínimo 4 caracteres">
+                    <input type="password" id="inp-new-pass" class="login-input" placeholder="Mínimo 8 caracteres">
                 </div>
                 <button id="btn-do-activate" class="action-btn" style="background:#4A90E2">Activar Cuenta</button>
                 <button class="action-btn btn-secondary btn-back">Atrás</button>
@@ -184,7 +184,8 @@ export async function initLogin(onSuccess) {
         const code = document.getElementById('inp-code').value;
         const pass = document.getElementById('inp-new-pass').value;
         
-        if (pass.length < 4) return showError("La contraseña es muy corta");
+        // --- CAMBIO: VALIDACIÓN 8 CARACTERES ---
+        if (pass.length < 8) return showError("La contraseña debe tener al menos 8 caracteres");
 
         try {
             const res = await api.activate(fullEmail, code, pass);
