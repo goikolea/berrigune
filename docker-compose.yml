@@ -1,0 +1,33 @@
+services:
+  # Your Application
+  app:
+    container_name: campus_app
+    build: .
+    restart: always
+    # Connects to the host network is not needed because we use Tunnel
+    # We only expose it to the internal Docker network
+    networks:
+      - campus_net
+    # Load secrets from the .env file
+    env_file:
+      - .env
+    # PERSISTENCE: Map host folder to container folder
+    volumes:
+      - ./data:/app/server/database
+
+  # Cloudflare Tunnel (We will configure the token in the next step)
+  tunnel:
+    container_name: campus_tunnel
+    image: cloudflare/cloudflared:latest
+    restart: always
+    command: tunnel run
+    env_file:
+      - .env
+    networks:
+      - campus_net
+    depends_on:
+      - app
+
+# Define an internal network so Tunnel can talk to App
+networks:
+  campus_net:
