@@ -11,10 +11,18 @@ export function setOnNodeCreated(cb) {
 const styles = `
     #create-modal {
         position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-        background: white; padding: 30px; border-radius: 12px;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.2); width: 480px; z-index: 5000;
+        background: white; padding: 25px; border-radius: 12px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.2); 
+        
+        /* RESPONSIVE WIDTH */
+        width: 90%; max-width: 480px; 
+        
+        z-index: 5000;
         font-family: 'Segoe UI', sans-serif; display: none;
-        border: 1px solid #eee; max-height: 90vh; overflow-y: auto;
+        border: 1px solid #eee; 
+        
+        /* SCROLL ON MOBILE */
+        max-height: 85vh; overflow-y: auto;
     }
     #create-modal.active { display: block; }
     .modal-header { font-size: 20px; font-weight: 700; margin-bottom: 20px; color: #333; border-bottom: 1px solid #eee; padding-bottom: 10px; }
@@ -24,10 +32,11 @@ const styles = `
 
     .form-group { margin-bottom: 15px; }
     .form-label { display: block; font-size: 12px; font-weight: 700; color: #666; margin-bottom: 5px; text-transform: uppercase; }
-    .form-control { width: 100%; padding: 10px; border: 2px solid #eee; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+    
+    /* Font size 16px to prevent zoom on mobile */
+    .form-control { width: 100%; padding: 10px; border: 2px solid #eee; border-radius: 6px; font-size: 16px; box-sizing: border-box; }
     .form-control:focus { border-color: #4A90E2; outline: none; }
     
-    /* Nueva Categoría */
     #new-cat-section {
         display: none; background: #F0F7FF; padding: 10px; border-radius: 6px; 
         border: 1px dashed #4A90E2; margin-top: 5px;
@@ -35,7 +44,7 @@ const styles = `
     #new-cat-section.active { display: block; }
 
     .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
-    .btn { padding: 10px 20px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; }
+    .btn { padding: 12px 20px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 15px;}
     .btn-cancel { background: #eee; color: #333; }
     .btn-save { background: #4A90E2; color: white; }
     
@@ -44,6 +53,13 @@ const styles = `
         background: rgba(255,255,255,0.8); z-index: 4999; display: none;
     }
     .overlay-backdrop.active { display: block; }
+
+    /* MOBILE STYLES */
+    @media (max-width: 600px) {
+        .form-section { flex-direction: column; gap: 0; }
+        .col { margin-bottom: 15px; }
+        #create-modal { padding: 20px; width: 95%; max-height: 80vh; }
+    }
 `;
 
 let modalElement, backdropElement;
@@ -64,7 +80,7 @@ export function initCreationModal() {
     modalElement = document.createElement('div');
     modalElement.id = 'create-modal';
     modalElement.innerHTML = `
-        <div class="modal-header">Nueva Señal de Innovación</div>
+        <div class="modal-header">Nueva Señal</div>
         
         <div class="form-section">
             <div class="col">
@@ -100,7 +116,7 @@ export function initCreationModal() {
 
         <div class="form-group">
             <label class="form-label">Descripción</label>
-            <textarea id="input-desc" class="form-control" placeholder="Detalles de la idea..."></textarea>
+            <textarea id="input-desc" class="form-control" placeholder="Detalles de la idea..." style="height:80px"></textarea>
         </div>
 
         <div class="form-group">
@@ -137,7 +153,6 @@ async function loadFormData() {
             api.getCategories()
         ]);
 
-        // 1. Populate Types (Safe Way)
         const selectType = document.getElementById('input-type');
         selectType.innerHTML = ''; 
         types.forEach(t => {
@@ -145,7 +160,6 @@ async function loadFormData() {
             selectType.add(opt);
         });
 
-        // 2. Populate Categories (Safe Way)
         const selectCat = document.getElementById('input-cat');
         selectCat.innerHTML = '';
         cats.forEach(c => {
@@ -153,7 +167,6 @@ async function loadFormData() {
             selectCat.add(opt);
         });
 
-        // Option for New
         const newOpt = new Option('+ Nueva Área...', 'NEW');
         newOpt.style.color = "#4A90E2";
         newOpt.style.fontWeight = "bold";

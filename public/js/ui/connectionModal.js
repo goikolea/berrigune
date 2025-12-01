@@ -11,7 +11,11 @@ export function setOnConnectionCreated(cb) {
 const styles = `
     #conn-modal {
         position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-        background: white; padding: 25px; border-radius: 10px; width: 400px;
+        background: white; padding: 25px; border-radius: 10px; 
+        
+        /* RESPONSIVE WIDTH */
+        width: 90%; max-width: 400px;
+        
         box-shadow: 0 20px 50px rgba(0,0,0,0.3); z-index: 6000; display: none;
         font-family: 'Segoe UI', sans-serif;
     }
@@ -20,9 +24,12 @@ const styles = `
     .conn-row { margin-bottom: 15px; }
     .conn-label { font-size: 12px; font-weight: 700; color: #666; margin-bottom: 5px; display: block; }
     .conn-val { font-size: 14px; padding: 8px; background: #f5f5f7; border-radius: 4px; color: #333; }
-    .conn-select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+    
+    /* 16px font to prevent zoom */
+    .conn-select, .form-control { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; box-sizing: border-box;}
+    
     .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
-    .btn { padding: 8px 16px; border-radius: 4px; border: none; cursor: pointer; font-weight: 600; }
+    .btn { padding: 10px 18px; border-radius: 4px; border: none; cursor: pointer; font-weight: 600; font-size: 15px; }
     .btn-cancel { background: #eee; color: #333; }
     .btn-save { background: #4A90E2; color: white; }
 `;
@@ -65,7 +72,7 @@ export function initConnectionModal() {
 
         <div class="conn-row">
             <span class="conn-label">Descripción de la relación</span>
-            <input type="text" id="conn-desc" class="form-control" placeholder="Ej: Inspira a..." autocomplete="off" style="width:100%; box-sizing:border-box; padding:8px;">
+            <input type="text" id="conn-desc" class="form-control" placeholder="Ej: Inspira a..." autocomplete="off">
         </div>
 
         <div class="modal-actions">
@@ -157,10 +164,8 @@ async function saveConnection() {
             description: desc
         };
         
-        // 1. Guardar en DB
         const newConn = await api.createConnection(connData);
         
-        // 2. Notificar a Main para que actualice gráficos y lista global
         if (onConnectionCreatedCallback) {
             onConnectionCreatedCallback(newConn, sourceNode, targetNode || objects.find(o => o.dataRef.id == targetId));
         }

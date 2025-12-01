@@ -5,14 +5,17 @@ const styles = `
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background: #F5F5F7; z-index: 9999;
         display: flex; align-items: center; justify-content: center;
+        padding: 20px; box-sizing: border-box; /* Prevent edge touching */
     }
     .login-box {
-        background: white; padding: 40px; border-radius: 12px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 360px;
+        background: white; padding: 30px; border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1); 
+        width: 100%; max-width: 360px; /* Responsive Width */
         font-family: 'Segoe UI', sans-serif;
         transition: height 0.3s;
+        max-height: 90vh; overflow-y: auto; /* Scroll if keyboard covers */
     }
-    .login-header { text-align: center; margin-bottom: 30px; }
+    .login-header { text-align: center; margin-bottom: 25px; }
     .login-title { font-size: 24px; font-weight: 800; color: #1a1a1a; margin: 0; }
     .login-subtitle { font-size: 14px; color: #666; margin-top: 5px; }
 
@@ -23,13 +26,16 @@ const styles = `
     /* EMAIL INPUT CON DOMINIO FIJO */
     .email-wrapper { display: flex; align-items: center; border: 2px solid #eee; border-radius: 6px; overflow: hidden; }
     .email-wrapper:focus-within { border-color: #4A90E2; }
+    
+    /* Font size 16px prevents iOS zoom on focus */
     .email-input { 
         flex: 1; border: none; padding: 12px; font-size: 16px; outline: none; 
-        text-align: right; background: transparent;
+        text-align: right; background: transparent; min-width: 0; /* Flex fix */
     }
     .domain-suffix {
-        background: #f9f9f9; padding: 12px; font-size: 16px; color: #666;
+        background: #f9f9f9; padding: 12px; font-size: 14px; color: #666;
         border-left: 1px solid #eee; font-weight: 600; user-select: none;
+        white-space: nowrap;
     }
 
     .login-input {
@@ -53,20 +59,25 @@ const styles = `
     .step { display: none; animation: fadeIn 0.3s; }
     .step.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* MOBILE TWEAKS */
+    @media (max-width: 480px) {
+        .login-box { padding: 20px; }
+        .login-title { font-size: 20px; }
+        .domain-suffix { padding: 12px 8px; font-size: 13px; }
+    }
 `;
 
 let currentDomain = "@...";
 let fullEmail = "";
 
 export async function initLogin(onSuccess) {
-    // 1. Check sesión
     if (api.isLoggedIn()) {
         const role = api.isAdmin() ? 'admin' : 'user';
         onSuccess({ role });
         return;
     }
 
-    // 2. Obtener Dominio del servidor
     try {
         const config = await api.getPublicConfig();
         currentDomain = "@" + config.domain;
@@ -81,11 +92,10 @@ export async function initLogin(onSuccess) {
     overlay.innerHTML = `
         <div class="login-box">
             <div class="login-header">
-                <h1 class="login-title">BERRIKUNTZA ERRUTINAK</h1>
+                <h1 class="login-title">Campus Innovación</h1>
                 <div class="login-subtitle" id="step-title">Identifícate para entrar</div>
             </div>
 
-            <!-- PASO 1: EMAIL -->
             <div id="step-1" class="step active">
                 <div class="input-group">
                     <label class="label">USUARIO</label>
@@ -97,7 +107,6 @@ export async function initLogin(onSuccess) {
                 <button id="btn-next" class="action-btn">Siguiente</button>
             </div>
 
-            <!-- PASO 2: LOGIN (Contraseña) -->
             <div id="step-login" class="step">
                 <div class="input-group">
                     <label class="label">CONTRASEÑA</label>
@@ -107,7 +116,6 @@ export async function initLogin(onSuccess) {
                 <button class="action-btn btn-secondary btn-back">Atrás</button>
             </div>
 
-            <!-- PASO 2: ACTIVAR (Código + Nueva Pass) -->
             <div id="step-activate" class="step">
                 <p style="font-size:13px; color:#666; margin-bottom:15px; line-height:1.4">
                     👋 ¡Bienvenido! Esta es tu primera vez.<br>Activa tu cuenta para continuar.
@@ -138,13 +146,12 @@ export async function initLogin(onSuccess) {
         username: document.getElementById('inp-username')
     };
 
-    // --- LÓGICA PASO 1 ---
     const handleNext = async () => {
         const username = ui.username.value.trim();
         if (!username) return showError("Escribe tu usuario");
 
-        fullEmail = username + currentDomain; // Construir email completo
-        showError(""); // Limpiar errores
+        fullEmail = username + currentDomain; 
+        showError(""); 
 
         try {
             document.getElementById('btn-next').innerText = "Verificando...";
@@ -154,10 +161,8 @@ export async function initLogin(onSuccess) {
             if (res.status === 'unknown') {
                 showError("Usuario no autorizado. Contacta al Master.");
             } else if (res.status === 'active') {
-                // IR A LOGIN
                 goToStep('login');
             } else if (res.status === 'pending') {
-                // IR A ACTIVAR
                 goToStep('activate');
             }
         } catch (e) {
@@ -169,7 +174,6 @@ export async function initLogin(onSuccess) {
     document.getElementById('btn-next').onclick = handleNext;
     ui.username.addEventListener('keypress', (e) => { if(e.key === 'Enter') handleNext(); });
 
-    // --- LÓGICA LOGIN ---
     document.getElementById('btn-do-login').onclick = async () => {
         const pass = document.getElementById('inp-password').value;
         try {
@@ -179,12 +183,10 @@ export async function initLogin(onSuccess) {
         } catch (e) { showError(e.message); }
     };
 
-    // --- LÓGICA ACTIVAR ---
     document.getElementById('btn-do-activate').onclick = async () => {
         const code = document.getElementById('inp-code').value;
         const pass = document.getElementById('inp-new-pass').value;
         
-        // --- CAMBIO: VALIDACIÓN 8 CARACTERES ---
         if (pass.length < 8) return showError("La contraseña debe tener al menos 8 caracteres");
 
         try {
@@ -195,9 +197,6 @@ export async function initLogin(onSuccess) {
         } catch (e) { showError(e.message); }
     };
 
-    // --- UTILIDADES ---
-    
-    // Botones Atrás
     overlay.querySelectorAll('.btn-back').forEach(btn => {
         btn.onclick = () => {
             goToStep('1');

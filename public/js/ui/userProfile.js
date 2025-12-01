@@ -6,7 +6,7 @@ const styles = `
         position: absolute;
         bottom: 230px; 
         left: 20px;
-        width: 40px; height: 40px;
+        width: 44px; height: 44px;
         background: white;
         border-radius: 50%;
         box-shadow: 0 4px 10px rgba(0,0,0,0.15);
@@ -14,7 +14,7 @@ const styles = `
         cursor: pointer;
         z-index: 9001;
         display: flex; align-items: center; justify-content: center;
-        font-size: 20px;
+        font-size: 22px;
         transition: transform 0.2s;
     }
     #btn-user-profile:hover { transform: scale(1.1); background: #f9f9f9; }
@@ -34,9 +34,19 @@ const styles = `
         padding: 20px;
         z-index: 9001;
         font-family: 'Segoe UI', sans-serif;
-        border: 1px solid rgba(0,0,0,0.1);
+        border: 1px solid rgba(0,0,0,0.05);
     }
     #profile-panel.active { display: flex; }
+
+    /* MOBILE: Center panel */
+    @media (max-width: 600px) {
+        #profile-panel {
+            left: 50%; top: 50%; bottom: auto;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 320px;
+        }
+    }
 
     .profile-header {
         font-size: 14px; font-weight: 700; color: #333;
@@ -44,21 +54,18 @@ const styles = `
         padding-bottom: 10px; 
         display: flex; justify-content: space-between; align-items: center; 
     }
-    .profile-email { font-size: 12px; color: #666; font-weight: 400; margin-left: 5px;}
+    .profile-email { font-size: 13px; color: #666; font-weight: 400; margin-left: 5px;}
 
-    /* BOTÓN CERRAR */
     .close-profile-btn {
-        font-size: 18px; color: #999; cursor: pointer; line-height: 1; padding: 0 5px;
+        font-size: 24px; color: #999; cursor: pointer; line-height: 1; padding: 0 5px;
     }
     .close-profile-btn:hover { color: #333; }
 
-    /* BADGES SECTION */
     .badge-item { margin-top: 15px; }
     .badge-header { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; }
     .badge-title { font-weight: 700; color: #444; }
     .badge-status { color: #888; }
     
-    /* PROGRESO */
     .progress-track {
         width: 100%; height: 8px; background: #eee; border-radius: 4px; overflow: hidden;
     }
@@ -73,9 +80,9 @@ const styles = `
     .completed { color: #2ECC71; font-weight: bold; }
     
     .logout-btn {
-        margin-top: 20px;
-        font-size: 11px; color: #E04F5F; text-decoration: underline; cursor: pointer;
-        align-self: flex-end; background: none; border: none;
+        margin-top: 25px; padding: 10px;
+        font-size: 13px; color: #E04F5F; text-decoration: underline; cursor: pointer;
+        align-self: center; background: none; border: none;
     }
 `;
 
@@ -105,7 +112,6 @@ export function initUserProfile() {
             <span id="close-profile" class="close-profile-btn">×</span>
         </div>
         
-        <!-- Sembrador -->
         <div class="badge-item">
             <div class="badge-header">
                 <span class="badge-title">${BADGES_CONFIG.SEMBRADOR.icon} ${BADGES_CONFIG.SEMBRADOR.title}</span>
@@ -116,7 +122,6 @@ export function initUserProfile() {
             </div>
         </div>
 
-        <!-- Conector -->
         <div class="badge-item">
             <div class="badge-header">
                 <span class="badge-title">${BADGES_CONFIG.CONECTOR.icon} ${BADGES_CONFIG.CONECTOR.title}</span>
@@ -131,15 +136,12 @@ export function initUserProfile() {
     `;
     document.body.appendChild(panel);
 
-    // --- EVENTO MODIFICADO: LÓGICA DE EXCLUSIÓN ---
     btn.onclick = (e) => {
         e.stopPropagation();
         
-        // 1. Cerrar el panel de Búsqueda si está abierto
         const searchPanel = document.getElementById('search-panel');
         if (searchPanel) searchPanel.classList.remove('active');
 
-        // 2. Alternar este panel
         panel.classList.toggle('active');
         if (panel.classList.contains('active')) {
             updateProfileData();

@@ -8,10 +8,16 @@ let onConnDeletedCallback = null;
 
 const styles = `
     #sidebar {
-        position: fixed; top: 0; right: -450px; width: 400px; height: 100%;
+        position: fixed; top: 0; 
+        
+        /* RESPONSIVE: Start off-screen (-100%) */
+        right: -100%; 
+        width: 100%; max-width: 450px; /* Take full width on mobile, limit on desktop */
+        
+        height: 100%;
         background: #FFFFFF; border-left: 2px solid #1a1a1a;
         box-shadow: -5px 0 15px rgba(0,0,0,0.05); 
-        padding: 40px; box-sizing: border-box; 
+        padding: 30px; box-sizing: border-box; 
         transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
         z-index: 9999;
         display: flex; flex-direction: column;
@@ -24,18 +30,18 @@ const styles = `
     .badge-type { background: #1a1a1a; color: #fff; }
     .badge-cat { background: #f0f0f0; color: #333; border: 1px solid #ddd; }
 
-    .sidebar-title { font-size: 28px; font-weight: 800; color: #1a1a1a; margin: 0 0 15px 0; }
+    .sidebar-title { font-size: 24px; font-weight: 800; color: #1a1a1a; margin: 0 0 15px 0; }
     .sidebar-text { font-size: 16px; color: #444; line-height: 1.6; margin-bottom: 30px; white-space: pre-line; }
     
-    .action-btn { background: #1a1a1a; color: #fff; padding: 12px 24px; border-radius: 6px; font-weight: 600; text-decoration: none; display: inline-block; }
+    .action-btn { background: #1a1a1a; color: #fff; padding: 12px 24px; border-radius: 6px; font-weight: 600; text-decoration: none; display: inline-block; text-align: center;}
     
     .header-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 30px; margin-bottom: 10px; }
     .btn-icon { background: #f5f5f7; border: 1px solid #ddd; width: 42px; height: 42px; border-radius: 8px; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
     .btn-icon:hover { background: #e0e0e0; transform: scale(1.05); }
 
-    .close-btn { position: absolute; top: 20px; right: 20px; background: none; border: none; font-size: 28px; cursor: pointer; color: #999; }
+    .close-btn { position: absolute; top: 15px; right: 15px; background: none; border: none; font-size: 32px; cursor: pointer; color: #999; z-index: 10; padding: 10px;}
     
-    .conn-list-section { margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; }
+    .conn-list-section { margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; padding-bottom: 50px;} /* Extra padding for mobile scroll */
     .conn-header { font-size: 14px; font-weight: 700; color: #999; text-transform: uppercase; margin-bottom: 15px; }
     .conn-item { 
         background: #fff; border: 1px solid #eee; border-radius: 8px; 
@@ -46,15 +52,13 @@ const styles = `
     .conn-target { font-weight: 700; color: #333; display: block; }
     .conn-desc { font-size: 12px; color: #666; font-style: italic; }
     
-    /* ESTILO DEL BOTÓN BORRAR */
     .btn-delete-conn { 
         display: inline-flex; align-items: center; justify-content: center;
         background: #FFF0F0; color: #E04F5F; border: 1px solid #fad0d0;
-        border-radius: 4px; width: 24px; height: 24px; 
-        cursor: pointer; font-size: 14px; margin-left: 10px; line-height: 1;
+        border-radius: 4px; width: 30px; height: 30px; 
+        cursor: pointer; font-size: 16px; margin-left: 10px; line-height: 1;
         transition: background 0.2s;
     }
-    .btn-delete-conn:hover { background: #ffdbdb; border-color: #E04F5F; }
 `;
 
 export function initSidebar() {
@@ -94,21 +98,19 @@ export function openSidebar(objRef, allConnections, onConnDeleted, onClose) {
     if (!sidebar) return;
     
     const data = objRef.dataRef; 
-    // innerText es seguro contra XSS
     document.getElementById('ui-badge-type').innerText = data.type_name || "Info";
     document.getElementById('ui-title').innerText = data.title || "Sin Título";
     document.getElementById('ui-text').innerText = data.description || "";
     
     const btnLink = document.getElementById('ui-link');
     if (data.link) {
-        // Basic href sanitization: check protocol
         const safeLink = data.link.trim();
         if(safeLink.startsWith('http://') || safeLink.startsWith('https://')) {
             btnLink.href = safeLink;
         } else {
-             btnLink.href = '#'; // Prevent javascript: attacks
+             btnLink.href = '#'; 
         }
-        btnLink.style.display = 'inline-block';
+        btnLink.style.display = 'block'; // Block for full width button on mobile
         btnLink.innerText = "Abrir Enlace";
     } else {
         btnLink.style.display = 'none';
@@ -154,23 +156,21 @@ export function updateConnectionList(allConnections) {
         const div = document.createElement('div');
         div.className = 'conn-item';
         
-        // --- CONSTRUCCIÓN SEGURA DEL DOM PARA EL ITEM ---
         const infoDiv = document.createElement('div');
         infoDiv.className = 'conn-info';
 
         const targetSpan = document.createElement('span');
         targetSpan.className = 'conn-target';
-        targetSpan.textContent = (isSource ? '→ ' : '← ') + otherName; // Safe text
+        targetSpan.textContent = (isSource ? '→ ' : '← ') + otherName; 
 
         const descSpan = document.createElement('span');
         descSpan.className = 'conn-desc';
-        descSpan.textContent = relation; // Safe text
+        descSpan.textContent = relation; 
 
         infoDiv.appendChild(targetSpan);
         infoDiv.appendChild(descSpan);
         div.appendChild(infoDiv);
 
-        // Botón de borrar (Solo si soy el dueño)
         const connUserId = String(c.user_id || "").trim();
         const myUserIdStr = String(currentUserId || "").trim();
 

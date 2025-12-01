@@ -1,5 +1,4 @@
 import { teleportPlayer } from '../entities/player.js';
-import { updateCamera } from '../core/camera.js';
 
 const styles = `
     /* BOTÓN LUPA */
@@ -7,7 +6,7 @@ const styles = `
         position: absolute;
         bottom: 280px; 
         left: 20px;
-        width: 40px; height: 40px;
+        width: 44px; height: 44px; /* Larger touch target */
         background: white;
         border-radius: 50%;
         box-shadow: 0 4px 10px rgba(0,0,0,0.15);
@@ -15,7 +14,7 @@ const styles = `
         cursor: pointer;
         z-index: 9001;
         display: flex; align-items: center; justify-content: center;
-        font-size: 18px;
+        font-size: 20px;
         transition: transform 0.2s, background 0.2s;
     }
     #btn-search-toggle:hover { transform: scale(1.1); background: #f9f9f9; }
@@ -23,9 +22,9 @@ const styles = `
     /* PANEL DE LISTA */
     #search-panel {
         position: absolute;
-        bottom: 330px; 
+        bottom: 340px; 
         left: 20px;
-        width: 260px;          
+        width: 280px;          
         max-height: 350px;     
         
         background: rgba(255, 255, 255, 0.98);
@@ -42,12 +41,22 @@ const styles = `
     }
     #search-panel.active { display: flex; }
 
+    /* MOBILE: Center panel on screen */
+    @media (max-width: 600px) {
+        #search-panel {
+            left: 50%; top: 50%; bottom: auto;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-height: 60vh;
+        }
+    }
+
     .search-header {
-        padding: 12px 15px;
+        padding: 15px;
         background: #f5f5f7;
         border-bottom: 1px solid #eee;
         font-weight: 700; color: #333;
-        font-size: 13px;
+        font-size: 14px;
         display: flex; justify-content: space-between; align-items: center;
         border-radius: 12px 12px 0 0;
         flex-shrink: 0; 
@@ -57,28 +66,20 @@ const styles = `
         padding: 10px;
         overflow-y: auto; 
         flex: 1;          
-        scrollbar-width: thin;
-        scrollbar-color: #ccc transparent;
     }
 
-    .search-content::-webkit-scrollbar { width: 6px; }
-    .search-content::-webkit-scrollbar-track { background: transparent; }
-    .search-content::-webkit-scrollbar-thumb { background-color: #ccc; border-radius: 10px; }
-    .search-content::-webkit-scrollbar-thumb:hover { background-color: #999; }
-
     .search-group-title {
-        font-size: 10px; font-weight: 800; text-transform: uppercase;
-        color: #aaa; margin: 10px 0 5px 5px;
+        font-size: 11px; font-weight: 800; text-transform: uppercase;
+        color: #aaa; margin: 15px 0 5px 5px;
         letter-spacing: 0.5px;
     }
     .search-group-title:first-child { margin-top: 0; }
 
     .search-item {
-        padding: 8px 10px;
+        padding: 10px;
         margin-bottom: 2px;
         border-radius: 6px;
         cursor: pointer;
-        transition: background 0.1s;
         display: flex; align-items: center; gap: 10px;
     }
     .search-item:hover { background: #eef4ff; }
@@ -86,10 +87,9 @@ const styles = `
     .dot-indicator {
         width: 8px; height: 8px; border-radius: 50%;
         flex-shrink: 0;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
     .item-title {
-        font-size: 13px; color: #444; font-weight: 500;
+        font-size: 14px; color: #444; font-weight: 500;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
 `;
@@ -112,21 +112,16 @@ export function initSearchList(nodesData) {
     panel.innerHTML = `
         <div class="search-header">
             Directorio
-            <span style="font-size:14px; color:#999; cursor:pointer; padding:0 5px;" id="close-search">×</span>
+            <span style="font-size:24px; color:#999; cursor:pointer; padding:0 5px;" id="close-search">×</span>
         </div>
         <div class="search-content" id="search-content"></div>
     `;
     document.body.appendChild(panel);
 
-    // --- EVENTO: LÓGICA DE EXCLUSIÓN ---
     btn.onclick = (e) => {
         e.stopPropagation(); 
-        
-        // 1. Cerrar el panel de Usuario si está abierto
         const userPanel = document.getElementById('profile-panel');
         if (userPanel) userPanel.classList.remove('active');
-
-        // 2. Alternar este panel
         panel.classList.toggle('active');
     };
 
@@ -149,7 +144,6 @@ export function renderList(nodesData) {
 
     const groups = {};
     nodesData.forEach(node => {
-        // Seguridad: Asegurar que hay un nombre de categoría
         const cat = node.cat_name || 'Otros';
         if (!groups[cat]) groups[cat] = [];
         groups[cat].push(node);
@@ -158,34 +152,31 @@ export function renderList(nodesData) {
     const sortedCats = Object.keys(groups).sort();
 
     sortedCats.forEach(catName => {
-        // 1. Crear Título de Categoría (Safe)
         const title = document.createElement('div');
         title.className = 'search-group-title';
-        title.textContent = catName; // XSS FIX: usar textContent
+        title.textContent = catName; 
         content.appendChild(title);
 
         groups[catName].forEach(node => {
-            // 2. Crear Item contenedor
             const item = document.createElement('div');
             item.className = 'search-item';
             item.title = node.title || "Sin título"; 
 
-            // 3. Crear el punto de color
             const dot = document.createElement('div');
             dot.className = 'dot-indicator';
-            dot.style.background = node.cat_color || '#999'; // CSS Colors are generally safe here
+            dot.style.background = node.cat_color || '#999';
 
-            // 4. Crear el texto del título (Safe)
             const itemTitle = document.createElement('div');
             itemTitle.className = 'item-title';
-            itemTitle.textContent = node.title || "Sin título"; // XSS FIX: usar textContent
+            itemTitle.textContent = node.title || "Sin título"; 
 
-            // 5. Ensamblar
             item.appendChild(dot);
             item.appendChild(itemTitle);
             
             item.onclick = () => {
                 jumpToNode(node);
+                // Close panel on mobile after click
+                if(window.innerWidth < 600) document.getElementById('search-panel').classList.remove('active');
             };
             
             content.appendChild(item);
