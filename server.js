@@ -338,13 +338,59 @@ app.post('/api/admin/users', authenticateToken, requireAdmin, (req, res) => {
 });
 
 app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, (req, res) => {
-    const { id } = req.params;
-    if (id === req.user.id) return res.status(400).json({ error: "No puedes borrarte a ti mismo" });
-    
-    db.prepare('DELETE FROM connections WHERE user_id = ?').run(id);
-    db.prepare('DELETE FROM nodes WHERE user_id = ?').run(id);
-    db.prepare('DELETE FROM users WHERE id = ?').run(id);
-    res.json({ success: true });
+    const targetUserId = req.params.id;
+
+    // 1. Prevent suicide (Admin cannot delete themselves)
+    if (targetUserId === req.user.id) {
+        return res.status(400).json({ error: "No puedes borrarte a ti mismo" });
+    }
+
+    try {
+        // 2. Find the Master Admin to inherit the assets
+        // We pick the first admin found, or strictly the one defined in .env if you prefer. 
+        // Here we select the oldest admin user as the "Master".
+        const masterAdmin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1").get();
+
+        if (!masterAdmin) {
+            return res.status(500).json({ error: "No se encontró un usuario Master para heredar los datos." });
+        }
+        
+        // 3. Get target user details (for the Audit Trail)
+        const targetUser = db.prepare('SELECT email FROM users WHERE id = ?').get(targetUserId);
+        if (!targetUser) return res.status(404).json({ error: "Usuario no encontrado" });
+
+        // 4. Execute the Transfer & Delete Transaction
+        const deleteUserFn = db.transaction((targetId, masterId, userEmail) => {
+            
+            // A. Delete Visits (Personal history is not inherited)
+            db.prepare('DELETE FROM visits WHERE user_id = ?').run(targetId);
+
+            // B. Transfer Connections (Allowing duplicates as requested)
+            db.prepare('UPDATE connections SET user_id = ? WHERE user_id = ?').run(masterId, targetId);
+
+            // C. Transfer Nodes & Add Audit Trail
+            // We use COALESCE to handle cases where description might be NULL/Empty
+            const auditTrail = `\n\n(Originalmente creado por: ${userEmail})`;
+            
+            db.prepare(`
+                UPDATE nodes 
+                SET user_id = ?, 
+                    description = COALESCE(description, '') || ?
+                WHERE user_id = ?
+            `).run(masterId, auditTrail, targetId);
+
+            // D. Finally, Delete the User
+            db.prepare('DELETE FROM users WHERE id = ?').run(targetId);
+        });
+
+        deleteUserFn(targetUserId, masterAdmin.id, targetUser.email);
+        
+        res.json({ success: true, message: "Usuario borrado y activos transferidos al Master." });
+
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: "Error borrando usuario: " + e.message });
+    }
 });
 
 app.post('/api/admin/users/reset/:id', authenticateToken, requireAdmin, (req, res) => {
@@ -367,9 +413,28 @@ app.get('/api/admin/content', authenticateToken, requireAdmin, (req, res) => {
 });
 
 app.delete('/api/admin/nodes/:id', authenticateToken, requireAdmin, (req, res) => {
-    db.prepare('DELETE FROM connections WHERE source_node_id = ? OR target_node_id = ?').run(req.params.id, req.params.id);
-    db.prepare('DELETE FROM nodes WHERE id = ?').run(req.params.id);
-    res.json({ success: true });
+    const nodeId = req.params.id;
+
+    try {
+        // Use a transaction to ensure all or nothing
+        const deleteNodeFn = db.transaction((id) => {
+            // 1. Delete visits (Dependent data)
+            db.prepare('DELETE FROM visits WHERE node_id = ?').run(id);
+
+            // 2. Delete connections (Dependent data)
+            db.prepare('DELETE FROM connections WHERE source_node_id = ? OR target_node_id = ?').run(id, id);
+
+            // 3. Delete the node itself
+            db.prepare('DELETE FROM nodes WHERE id = ?').run(id);
+        });
+
+        deleteNodeFn(nodeId);
+        res.json({ success: true });
+
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: "Error borrando nodo: " + e.message });
+    }
 });
 
 app.delete('/api/admin/connections/:id', authenticateToken, requireAdmin, (req, res) => {
