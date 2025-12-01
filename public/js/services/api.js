@@ -218,6 +218,42 @@ export const api = {
         return res.json();
     },
 
+    downloadExport: async (type) => {
+        try {
+            const res = await fetch(`/api/admin/export/${type}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}` // Sends the JWT
+                }
+            });
+            
+            if (!res.ok) throw new Error("Error de autorización o servidor.");
+
+            // Extract filename or default
+            let filename = `export_${type}.csv`;
+            const disposition = res.headers.get('Content-Disposition');
+            if (disposition && disposition.includes('attachment')) {
+                const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+                if (matches != null && matches[1]) { 
+                    filename = matches[1].replace(/['"]/g, '');
+                }
+            }
+
+            // Create Blob and Download
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (e) {
+            alert("Error descargando: " + e.message);
+        }
+    },
+
     logout: () => {
         authToken = null;
         currentUserId = null;

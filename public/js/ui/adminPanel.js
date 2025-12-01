@@ -68,7 +68,9 @@ export function initAdminPanel(isStandalone = false) {
 
     const dashboard = document.createElement('div');
     dashboard.id = 'admin-dashboard';
-    // HTML Estático seguro
+    
+    // HTML Estático seguro. 
+    // NOTA: Hemos eliminado los onclick="..." y añadido ID a los botones de exportar.
     dashboard.innerHTML = `
         <div class="admin-header">
             <div class="admin-title">Panel de Control Master</div>
@@ -78,6 +80,7 @@ export function initAdminPanel(isStandalone = false) {
             <button class="tab-btn active" data-tab="users">Usuarios</button>
             <button class="tab-btn" data-tab="announcement">Anuncios</button>
             <button class="tab-btn" data-tab="content">Contenido</button>
+            <button class="tab-btn" data-tab="export">📊 Exportar CSV</button>
         </div>
         
         <div class="admin-content">
@@ -111,6 +114,45 @@ export function initAdminPanel(isStandalone = false) {
                     <div id="content-list-container">Cargando...</div>
                 </div>
             </div>
+
+            <!-- NEW EXPORT TAB -->
+            <div class="tab-pane" id="tab-export">
+                <div class="admin-card">
+                    <h3>Descarga de Datos (Dirección)</h3>
+                    <p style="color:#666; font-size:14px; margin-bottom:20px;">
+                        Descarga los datos brutos en formato CSV compatible con Excel para el análisis del impacto del proyecto.
+                    </p>
+                    
+                    <div style="display:flex; gap:15px; flex-wrap:wrap;">
+                        <!-- Card 1: Users -->
+                        <div style="flex:1; min-width:200px; padding:20px; border:1px solid #eee; border-radius:8px; background:#f9f9f9;">
+                            <h4 style="margin-top:0;">👥 Usuarios y Aportación</h4>
+                            <p style="font-size:12px; color:#555;">Lista de usuarios con conteo de nodos y conexiones creadas.</p>
+                            <button class="admin-btn-action" id="btn-export-users">
+                                ⬇️ Descargar Usuarios.csv
+                            </button>
+                        </div>
+
+                        <!-- Card 2: Nodes -->
+                        <div style="flex:1; min-width:200px; padding:20px; border:1px solid #eee; border-radius:8px; background:#f9f9f9;">
+                            <h4 style="margin-top:0;">💡 Nodos (Señales)</h4>
+                            <p style="font-size:12px; color:#555;">Detalle completo de cada señal: título, descripción, categoría y ubicación.</p>
+                            <button class="admin-btn-action" id="btn-export-nodes">
+                                ⬇️ Descargar Nodos.csv
+                            </button>
+                        </div>
+
+                        <!-- Card 3: Connections -->
+                        <div style="flex:1; min-width:200px; padding:20px; border:1px solid #eee; border-radius:8px; background:#f9f9f9;">
+                            <h4 style="margin-top:0;">🔗 Conexiones</h4>
+                            <p style="font-size:12px; color:#555;">Análisis de enlaces: qué nodo se conecta con cuál y quién lo hizo.</p>
+                            <button class="admin-btn-action" id="btn-export-conns">
+                                ⬇️ Descargar Conexiones.csv
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- MODAL EDICIÓN -->
@@ -142,7 +184,14 @@ export function initAdminPanel(isStandalone = false) {
     `;
     document.body.appendChild(dashboard);
 
-    // --- EVENT HANDLERS ---
+    // --- EVENT HANDLERS (Ahora en JS para evitar bloqueo CSP) ---
+
+    // 1. Export Buttons
+    document.getElementById('btn-export-users').onclick = () => api.downloadExport('users');
+    document.getElementById('btn-export-nodes').onclick = () => api.downloadExport('nodes');
+    document.getElementById('btn-export-conns').onclick = () => api.downloadExport('connections');
+
+    // 2. Main Admin Buttons
     document.getElementById('close-admin').onclick = () => {
         if (isStandalone) {
             if(confirm("¿Cerrar sesión Master?")) api.logout();
@@ -165,18 +214,22 @@ export function initAdminPanel(isStandalone = false) {
         loadTabData('users');
     }
 
-    // Tabs
+    // 3. Tabs Logic
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.onclick = () => {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
             btn.classList.add('active');
             document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
-            loadTabData(btn.dataset.tab);
+            
+            // Only load data if NOT export tab
+            if (btn.dataset.tab !== 'export') {
+                loadTabData(btn.dataset.tab);
+            }
         };
     });
 
-    // Acciones
+    // 4. Action Buttons
     document.getElementById('btn-add-users').onclick = async () => {
         const val = document.getElementById('bulk-emails').value;
         const res = await api.addAdminUsers(val);
@@ -190,7 +243,7 @@ export function initAdminPanel(isStandalone = false) {
         alert("Anuncio actualizado");
     };
 
-    // --- MODAL EDICIÓN HANDLERS ---
+    // 5. Modal Edit Handlers
     const editOverlay = document.getElementById('edit-modal-overlay');
     
     document.getElementById('btn-cancel-edit').onclick = () => {
@@ -224,7 +277,7 @@ export function initAdminPanel(isStandalone = false) {
     };
 }
 
-// --- HELPER: Crear Tabla de forma segura sin innerHTML ---
+// --- HELPER: Crear Tabla ---
 function createTable(headers, rowsData, renderRowCallback) {
     const table = document.createElement('table');
     
@@ -259,21 +312,17 @@ async function loadTabData(tab) {
         const table = createTable(['Email', 'Estado', 'Acciones'], users, (u) => {
             const tr = document.createElement('tr');
             
-            // --- FIX SECURITY: Use textContent instead of innerHTML ---
-            
-            // Email Col
+            // Email
             const tdEmail = document.createElement('td');
-            
             const divEmail = document.createElement('div');
-            divEmail.textContent = u.email; // SAFE: No interpreta HTML
+            divEmail.textContent = u.email; 
             tdEmail.appendChild(divEmail);
-
             const smallRole = document.createElement('small');
             smallRole.style.color = '#999';
-            smallRole.textContent = u.role; // SAFE
+            smallRole.textContent = u.role;
             tdEmail.appendChild(smallRole);
             
-            // Status Col
+            // Status
             const tdStatus = document.createElement('td');
             const isActive = !!u.password;
             const statusSpan = document.createElement('span');
@@ -281,7 +330,7 @@ async function loadTabData(tab) {
             statusSpan.style.color = isActive ? 'green' : 'orange';
             tdStatus.appendChild(statusSpan);
 
-            // Actions Col
+            // Actions
             const tdActions = document.createElement('td');
             if (u.role !== 'admin') {
                 const btnReset = document.createElement('button');
@@ -320,7 +369,7 @@ async function loadTabData(tab) {
         const container = document.getElementById('content-list-container');
         container.innerHTML = '';
 
-        // 1. Tabla de Nodos
+        // Nodos
         const h4Nodes = document.createElement('h4');
         h4Nodes.textContent = `Nodos (${data.nodes.length})`;
         h4Nodes.style.marginBottom = '5px';
@@ -328,25 +377,21 @@ async function loadTabData(tab) {
 
         const nodesTable = createTable(['Título', 'Descripción', 'Acciones'], data.nodes, (n) => {
             const tr = document.createElement('tr');
-
             const tdTitle = document.createElement('td');
             const b = document.createElement('b');
-            b.textContent = n.title; // SAFE
+            b.textContent = n.title; 
             tdTitle.appendChild(b);
-
             const tdDesc = document.createElement('td');
             tdDesc.style.cssText = "color:#666; font-size:12px";
             let shortDesc = n.description || '';
             if (shortDesc.length > 50) shortDesc = shortDesc.substring(0, 50) + '...';
-            tdDesc.textContent = shortDesc; // SAFE
+            tdDesc.textContent = shortDesc; 
 
             const tdActions = document.createElement('td');
-            
             const btnEdit = document.createElement('button');
             btnEdit.className = "btn-sm btn-edit";
             btnEdit.textContent = "Editar";
             btnEdit.onclick = () => window.openEditModal('node', n.id);
-
             const btnDel = document.createElement('button');
             btnDel.className = "btn-sm btn-del";
             btnDel.textContent = "Borrar";
@@ -354,7 +399,6 @@ async function loadTabData(tab) {
 
             tdActions.appendChild(btnEdit);
             tdActions.appendChild(btnDel);
-
             tr.appendChild(tdTitle);
             tr.appendChild(tdDesc);
             tr.appendChild(tdActions);
@@ -362,7 +406,7 @@ async function loadTabData(tab) {
         });
         container.appendChild(nodesTable);
 
-        // 2. Tabla de Conexiones
+        // Conexiones
         const h4Conns = document.createElement('h4');
         h4Conns.textContent = `Conexiones (${data.connections.length})`;
         h4Conns.style.cssText = "margin-top:30px; margin-bottom:5px";
@@ -370,18 +414,14 @@ async function loadTabData(tab) {
 
         const connsTable = createTable(['Descripción', 'Acciones'], data.connections, (c) => {
             const tr = document.createElement('tr');
-
             const tdDesc = document.createElement('td');
-            tdDesc.textContent = c.description || 'Sin descripción'; // SAFE
-
+            tdDesc.textContent = c.description || 'Sin descripción'; 
             const tdActions = document.createElement('td');
             tdActions.style.width = "120px";
-
             const btnEdit = document.createElement('button');
             btnEdit.className = "btn-sm btn-edit";
             btnEdit.textContent = "Editar";
             btnEdit.onclick = () => window.openEditModal('connection', c.id);
-
             const btnDel = document.createElement('button');
             btnDel.className = "btn-sm btn-del";
             btnDel.textContent = "Borrar";
@@ -389,7 +429,6 @@ async function loadTabData(tab) {
 
             tdActions.appendChild(btnEdit);
             tdActions.appendChild(btnDel);
-
             tr.appendChild(tdDesc);
             tr.appendChild(tdActions);
             return tr;
@@ -434,13 +473,13 @@ window.openEditModal = (type, id) => {
 };
 
 window.deleteUser = async (id) => {
-    if(confirm("¿Borrar usuario?")) {
+    if(confirm("¿Borrar usuario? Sus nodos y conexiones se transferirán al Master.")) {
         await api.deleteUser(id);
         loadTabData('users');
     }
 };
 window.adminDeleteNode = async (id) => {
-    if(confirm("¿Borrar nodo?")) {
+    if(confirm("¿Borrar nodo? Se borrarán también las conexiones asociadas.")) {
         await api.adminDeleteNode(id);
         loadTabData('content');
     }

@@ -72,6 +72,30 @@ const sanitizeUser = (user) => {
     return safeUser;
 };
 
+// --- CSV EXPORT HELPER ---
+function convertToCSV(data) {
+    if (!data || data.length === 0) return '';
+    
+    // Extract headers
+    const header = Object.keys(data[0]).join(',');
+    
+    const rows = data.map(row => {
+        return Object.values(row).map(value => {
+            let val = (value === null || value === undefined) ? '' : String(value);
+            // Escape double quotes by doubling them (Excel standard)
+            val = val.replace(/"/g, '""');
+            // If value contains comma, newline or double quote, wrap in double quotes
+            if (val.search(/("|,|\n)/g) >= 0) {
+                val = `"${val}"`;
+            }
+            return val;
+        }).join(',');
+    }).join('\r\n'); // Windows line ending for better Excel compatibility
+
+    // Add BOM (\uFEFF) so Excel recognizes UTF-8 (accents/ñ) correctly
+    return '\uFEFF' + header + '\r\n' + rows;
+}
+
 // --- MIDDLEWARES ---
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
@@ -122,7 +146,6 @@ app.post('/api/activate', (req, res) => {
         return setTimeout(() => res.status(403).json({ error: 'Código de Centro incorrecto' }), 500);
     }
     
-    // --- NUEVO: Validar longitud de contraseña ---
     if (!newPassword || newPassword.length < 8) {
         return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres.' });
     }
@@ -337,41 +360,31 @@ app.post('/api/admin/users', authenticateToken, requireAdmin, (req, res) => {
     res.json({ message: `${count} usuarios añadidos a lista blanca.` });
 });
 
+// --- UPDATED DELETE USER: Transfer Assets to Master ---
 app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, (req, res) => {
     const targetUserId = req.params.id;
 
-    // 1. Prevent suicide (Admin cannot delete themselves)
     if (targetUserId === req.user.id) {
         return res.status(400).json({ error: "No puedes borrarte a ti mismo" });
     }
 
     try {
-        // 2. Find the Master Admin to inherit the assets
-        // We pick the first admin found, or strictly the one defined in .env if you prefer. 
-        // Here we select the oldest admin user as the "Master".
+        // Find Master Admin
         const masterAdmin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1").get();
-
-        if (!masterAdmin) {
-            return res.status(500).json({ error: "No se encontró un usuario Master para heredar los datos." });
-        }
+        if (!masterAdmin) return res.status(500).json({ error: "No se encontró un usuario Master." });
         
-        // 3. Get target user details (for the Audit Trail)
         const targetUser = db.prepare('SELECT email FROM users WHERE id = ?').get(targetUserId);
         if (!targetUser) return res.status(404).json({ error: "Usuario no encontrado" });
 
-        // 4. Execute the Transfer & Delete Transaction
         const deleteUserFn = db.transaction((targetId, masterId, userEmail) => {
-            
-            // A. Delete Visits (Personal history is not inherited)
+            // Delete Visits
             db.prepare('DELETE FROM visits WHERE user_id = ?').run(targetId);
-
-            // B. Transfer Connections (Allowing duplicates as requested)
+            
+            // Transfer Connections
             db.prepare('UPDATE connections SET user_id = ? WHERE user_id = ?').run(masterId, targetId);
 
-            // C. Transfer Nodes & Add Audit Trail
-            // We use COALESCE to handle cases where description might be NULL/Empty
+            // Transfer Nodes
             const auditTrail = `\n\n(Originalmente creado por: ${userEmail})`;
-            
             db.prepare(`
                 UPDATE nodes 
                 SET user_id = ?, 
@@ -379,12 +392,11 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, (req, res) =
                 WHERE user_id = ?
             `).run(masterId, auditTrail, targetId);
 
-            // D. Finally, Delete the User
+            // Delete User
             db.prepare('DELETE FROM users WHERE id = ?').run(targetId);
         });
 
         deleteUserFn(targetUserId, masterAdmin.id, targetUser.email);
-        
         res.json({ success: true, message: "Usuario borrado y activos transferidos al Master." });
 
     } catch (e) {
@@ -412,25 +424,17 @@ app.get('/api/admin/content', authenticateToken, requireAdmin, (req, res) => {
     res.json({ nodes, connections });
 });
 
+// --- UPDATED DELETE NODE: Handle Foreign Keys ---
 app.delete('/api/admin/nodes/:id', authenticateToken, requireAdmin, (req, res) => {
     const nodeId = req.params.id;
-
     try {
-        // Use a transaction to ensure all or nothing
         const deleteNodeFn = db.transaction((id) => {
-            // 1. Delete visits (Dependent data)
             db.prepare('DELETE FROM visits WHERE node_id = ?').run(id);
-
-            // 2. Delete connections (Dependent data)
             db.prepare('DELETE FROM connections WHERE source_node_id = ? OR target_node_id = ?').run(id, id);
-
-            // 3. Delete the node itself
             db.prepare('DELETE FROM nodes WHERE id = ?').run(id);
         });
-
         deleteNodeFn(nodeId);
         res.json({ success: true });
-
     } catch (e) {
         console.error(e);
         res.status(500).json({ error: "Error borrando nodo: " + e.message });
@@ -466,6 +470,58 @@ app.put('/api/admin/connections/:id', authenticateToken, requireAdmin, (req, res
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ error: e.message });
+    }
+});
+
+// --- NEW EXPORT CSV ROUTE ---
+app.get('/api/admin/export/:type', authenticateToken, requireAdmin, (req, res) => {
+    const { type } = req.params;
+    let data = [];
+    let filename = `export_${type}_${Date.now()}.csv`;
+
+    try {
+        if (type === 'users') {
+            data = db.prepare(`
+                SELECT id, email, name, role,
+                (SELECT COUNT(*) FROM nodes WHERE nodes.user_id = users.id) as total_nodes,
+                (SELECT COUNT(*) FROM connections WHERE connections.user_id = users.id) as total_connections,
+                created_at as fecha_registro
+                FROM users ORDER BY total_nodes DESC
+            `).all();
+        } else if (type === 'nodes') {
+            data = db.prepare(`
+                SELECT n.title, n.description, c.name as categoria, st.name as tipo,
+                u.email as creador, n.link, n.x, n.y, n.created_at
+                FROM nodes n
+                LEFT JOIN categories c ON n.category_id = c.id
+                LEFT JOIN signal_types st ON n.signal_type_id = st.id
+                LEFT JOIN users u ON n.user_id = u.id
+                ORDER BY n.created_at DESC
+            `).all();
+        } else if (type === 'connections') {
+            data = db.prepare(`
+                SELECT conn.description, n1.title as origen, c1.name as cat_origen,
+                n2.title as destino, c2.name as cat_destino, u.email as creador, conn.created_at
+                FROM connections conn
+                LEFT JOIN nodes n1 ON conn.source_node_id = n1.id
+                LEFT JOIN categories c1 ON n1.category_id = c1.id
+                LEFT JOIN nodes n2 ON conn.target_node_id = n2.id
+                LEFT JOIN categories c2 ON n2.category_id = c2.id
+                LEFT JOIN users u ON conn.user_id = u.id
+                ORDER BY conn.created_at DESC
+            `).all();
+        } else {
+            return res.status(400).send("Tipo inválido");
+        }
+
+        const csv = convertToCSV(data);
+        res.header('Content-Type', 'text/csv');
+        res.header('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(csv);
+
+    } catch (e) {
+        console.error("Export Error:", e);
+        res.status(500).send("Error generando CSV");
     }
 });
 
