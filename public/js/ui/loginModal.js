@@ -81,7 +81,7 @@ export async function initLogin(onSuccess) {
     overlay.innerHTML = `
         <div class="login-box">
             <div class="login-header">
-                <h1 class="login-title">Campus Innovación</h1>
+                <h1 class="login-title">BERRIKUNTZA ERRUTINAK</h1>
                 <div class="login-subtitle" id="step-title">Identifícate para entrar</div>
             </div>
 
